@@ -1,0 +1,20 @@
+{{- if not .Values.clientData.existingClaim -}}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "azerothcore.dataClaimName" . }}
+  annotations:
+    # The ~5 GB download should survive helm uninstall.
+    helm.sh/resource-policy: keep
+  labels:
+    {{- include "azerothcore.labels" . | nindent 4 }}
+    app.kubernetes.io/component: client-data
+spec:
+  accessModes: ["ReadWriteOnce"]
+  {{- if .Values.clientData.storage.storageClass }}
+  storageClassName: {{ .Values.clientData.storage.storageClass | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.clientData.storage.size }}
+{{- end }}

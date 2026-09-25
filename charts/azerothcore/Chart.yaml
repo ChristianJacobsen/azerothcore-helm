@@ -1,0 +1,22 @@
+apiVersion: v2
+name: azerothcore
+description: |-
+  AzerothCore (WoW 3.3.5a private server) with selectable image flavors.
+  C++ mods are compile-time in AzerothCore; this chart deploys prebuilt images.
+  Use flavor=vanilla (upstream images), flavor=playerbots / playerbots-eluna
+  (images built from the mod-playerbots fork), or point images.* at images you
+  built yourself with the mods you want (see build/ in the chart repository).
+type: application
+version: 0.1.0
+appVersion: 17.0.0-dev
+keywords:
+  - azerothcore
+  - wow
+  - wotlk
+  - game-server
+home: https://github.com/azerothcore/azerothcore-wotlk
+sources:
+  - https://github.com/azerothcore/azerothcore-wotlk
+  - https://github.com/mod-playerbots/mod-playerbots
+maintainers:
+  - name: azerothcore-helm

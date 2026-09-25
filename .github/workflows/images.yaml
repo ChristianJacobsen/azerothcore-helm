@@ -1,0 +1,92 @@
+name: images
+
+# Builds the non-vanilla flavor images (from the mod-playerbots fork) and
+# publishes them to ghcr.io/<repo-owner>/ac-wotlk-*.
+#
+# Per-arch tags  : <flavor>-amd64 / <flavor>-arm64   (intermediate)
+# Published tags : <flavor>        (rolling multi-arch manifest)
+#                  <flavor>-YYYYMMDD                  (pin these in values.yaml)
+on:
+  workflow_dispatch:
+  schedule:
+    # Weekly, Monday 04:17 UTC — picks up upstream fork changes.
+    - cron: "17 4 * * 1"
+
+permissions:
+  packages: write
+
+env:
+  REGISTRY: ghcr.io/${{ github.repository_owner }}
+
+jobs:
+  build:
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix:
+        flavor: [playerbots]
+        arch: [amd64, arm64]
+        include:
+          - arch: amd64
+            runs-on: ubuntu-24.04
+          - arch: arm64
+            runs-on: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runs-on }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: free disk space
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: false
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: build + push per-arch images
+        env:
+          FLAVOR: ${{ matrix.flavor }}
+          REGISTRY: ${{ env.REGISTRY }}
+          TAG: ${{ matrix.flavor }}-${{ matrix.arch }}
+          PLATFORMS: linux/${{ matrix.arch }}
+          PUSH: "1"
+        run: build/build-images.sh
+
+  manifest:
+    needs: build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: merge multi-arch manifests
+        run: |
+          set -euo pipefail
+          DATE="$(date -u +%Y%m%d)"
+          for flavor in playerbots playerbots-eluna; do
+            for img in worldserver authserver db-import; do
+              refs=""
+              for arch in amd64 arm64; do
+                refs="$refs $REGISTRY/ac-wotlk-$img:$flavor-$arch"
+              done
+              for tag in "$flavor" "$flavor-$DATE"; do
+                docker buildx imagetools create \
+                  -t "$REGISTRY/ac-wotlk-$img:$tag" $refs
+              done
+            done
+          done
+        shell: bash

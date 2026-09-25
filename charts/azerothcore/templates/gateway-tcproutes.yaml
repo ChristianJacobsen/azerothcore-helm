@@ -1,0 +1,41 @@
+{{- if .Values.gateway.enabled -}}
+{{/*
+TCPRoute lives in the Gateway API experimental channel (v1alpha2) as of
+Gateway API v1.6; some controllers additionally serve it at v1. Prefer v1
+when the cluster serves it, fall back to v1alpha2, fail clearly otherwise.
+*/}}
+{{- $apiVersion := "" -}}
+{{- if .Capabilities.APIVersions.Has "gateway.networking.k8s.io/v1" -}}
+  {{- $apiVersion = "gateway.networking.k8s.io/v1" -}}
+{{- else if .Capabilities.APIVersions.Has "gateway.networking.k8s.io/v1alpha2" -}}
+  {{- $apiVersion = "gateway.networking.k8s.io/v1alpha2" -}}
+{{- else -}}
+  {{- fail "gateway.enabled=true but this cluster serves no TCPRoute API (gateway.networking.k8s.io v1/v1alpha2). Install Gateway API CRDs (experimental channel) plus a TCPRoute-capable controller (NGINX Gateway Fabric, Envoy Gateway, Traefik with experimentalChannel, Kong), or set gateway.enabled=false and use NodePort/LoadBalancer services." -}}
+{{- end -}}
+{{- range $route := list
+  (dict "name" "authserver" "port" .Values.authserver.service.port)
+  (dict "name" "worldserver" "port" .Values.worldserver.service.port)
+}}
+---
+apiVersion: {{ $apiVersion }}
+kind: TCPRoute
+metadata:
+  name: {{ printf "%s-%s" (include "azerothcore.fullname" $) $route.name }}
+  labels:
+    {{- include "azerothcore.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ $route.name }}
+  {{- with $.Values.gateway.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with $.Values.gateway.parentRefs }}
+  parentRefs:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  rules:
+    - backendRefs:
+        - name: {{ printf "%s-%s" (include "azerothcore.fullname" $) $route.name }}
+          port: {{ $route.port }}
+{{- end }}
+{{- end }}

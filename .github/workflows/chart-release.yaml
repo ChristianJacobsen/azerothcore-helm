@@ -1,0 +1,30 @@
+name: chart-release
+
+# Packages the chart and pushes it to oci://ghcr.io/<repo-owner>/charts.
+# Tag a release with: git tag chart-v0.1.0 && git push --tags
+on:
+  push:
+    tags: ["chart-v*"]
+
+permissions:
+  packages: write
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: azure/setup-helm@v4
+
+      - name: package + push
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#chart-v}"
+          helm package charts/azerothcore --version "$version" --app-version "$version"
+          echo "$GITHUB_TOKEN" | helm registry login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          helm push "azerothcore-$version.tgz" "oci://ghcr.io/$OWNER/charts"
+        shell: bash

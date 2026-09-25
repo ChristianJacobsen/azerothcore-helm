@@ -1,0 +1,48 @@
+name: chart-e2e
+
+# Full install smoke test on kind with the default (vanilla) flavor.
+# Not run per-PR: the client-data download alone is ~5 GB.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "42 3 * * *" # nightly 03:42 UTC
+
+jobs:
+  e2e:
+    timeout-minutes: 60
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: azure/setup-helm@v4
+
+      - uses: helm/kind-action@v1.12.0
+
+      - name: install
+        run: |
+          set -euo pipefail
+          kubectl create namespace ac
+          helm install ac charts/azerothcore -n ac
+
+      - name: wait for db-init
+        run: |
+          kubectl -n ac wait --for=condition=complete job -l app.kubernetes.io/component=db-init --timeout=1800s
+
+      - name: wait for servers
+        run: |
+          set -euo pipefail
+          kubectl -n ac rollout status deploy/ac-azerothcore-authserver --timeout=1800s
+          kubectl -n ac rollout status deploy/ac-azerothcore-worldserver --timeout=1800s
+
+      - name: helm test
+        run: helm test ac -n ac --timeout 10m
+
+      - name: diagnose on failure
+        if: failure()
+        run: |
+          kubectl -n ac get pods -o wide || true
+          kubectl -n ac get jobs || true
+          for p in $(kubectl -n ac get pods -o name); do
+            kubectl -n ac describe "$p" | tail -30 || true
+          done
+        shell: bash

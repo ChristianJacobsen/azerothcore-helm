@@ -1,0 +1,77 @@
+{{- if .Values.dbInit.enabled -}}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "azerothcore.dbInitJobName" . }}
+  labels:
+    {{- include "azerothcore.labels" . | nindent 4 }}
+    app.kubernetes.io/component: db-init
+spec:
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        {{- include "azerothcore.selectorLabels" (dict "ctx" . "component" "db-init") | nindent 8 }}
+    spec:
+      {{- include "azerothcore.pull" . | nindent 6 }}
+      restartPolicy: Never
+      initContainers:
+        - name: wait-mysql
+          image: {{ include "azerothcore.image" (dict "ctx" . "component" "dbImport") }}
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          args:
+            - bash
+            - -c
+            - >-
+              until mysqladmin ping -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USER"
+              -p"$MYSQL_ROOT_PASSWORD" --silent; do
+              echo "waiting for mysql at $DB_HOST:$DB_PORT"; sleep 3; done
+          env:
+            - name: DB_HOST
+              value: {{ include "azerothcore.db.host" . | quote }}
+            - name: DB_PORT
+              value: {{ include "azerothcore.db.port" . | quote }}
+            - name: DB_USER
+              value: {{ include "azerothcore.db.user" . | quote }}
+            {{- include "azerothcore.dbEnv" . | nindent 12 }}
+        - name: dbimport
+          image: {{ include "azerothcore.image" (dict "ctx" . "component" "dbImport") }}
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          env:
+            - name: AC_DATA_DIR
+              value: /azerothcore/env/dist/data
+            - name: AC_LOGS_DIR
+              value: /azerothcore/env/dist/logs
+            {{- include "azerothcore.dbEnv" . | nindent 12 }}
+            {{- include "azerothcore.dbEnvWorld" . | nindent 12 }}
+      containers:
+        - name: realmlist
+          image: {{ include "azerothcore.image" (dict "ctx" . "component" "dbImport") }}
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          args:
+            - bash
+            - -c
+            - >-
+              set -euo pipefail;
+              if [ -z "$REALM_ADDRESS" ] && [ -z "$REALM_NAME" ]; then
+              echo "dbInit.realm.address/name empty, skipping realmlist update";
+              exit 0; fi;
+              SET=""; SEP="";
+              if [ -n "$REALM_ADDRESS" ]; then SET="address = '$REALM_ADDRESS'"; SEP=", "; fi;
+              if [ -n "$REALM_NAME" ]; then SET="$SET${SEP}name = '$REALM_NAME'"; fi;
+              echo "UPDATE realmlist SET $SET WHERE id = 1";
+              mysql -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USER" -p"$MYSQL_ROOT_PASSWORD"
+              acore_auth -e "UPDATE realmlist SET $SET WHERE id = 1;"
+          env:
+            - name: DB_HOST
+              value: {{ include "azerothcore.db.host" . | quote }}
+            - name: DB_PORT
+              value: {{ include "azerothcore.db.port" . | quote }}
+            - name: DB_USER
+              value: {{ include "azerothcore.db.user" . | quote }}
+            - name: REALM_ADDRESS
+              value: {{ .Values.dbInit.realm.address | quote }}
+            - name: REALM_NAME
+              value: {{ .Values.dbInit.realm.name | quote }}
+            {{- include "azerothcore.dbEnv" . | nindent 12 }}
+{{- end }}

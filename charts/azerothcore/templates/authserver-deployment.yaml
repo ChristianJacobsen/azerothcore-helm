@@ -1,0 +1,66 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ printf "%s-authserver" (include "azerothcore.fullname" .) }}
+  labels:
+    {{- include "azerothcore.labels" . | nindent 4 }}
+    app.kubernetes.io/component: authserver
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "azerothcore.selectorLabels" (dict "ctx" . "component" "authserver") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "azerothcore.selectorLabels" (dict "ctx" . "component" "authserver") | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      {{- include "azerothcore.pull" . | nindent 6 }}
+      serviceAccountName: {{ include "azerothcore.serviceAccountName" . }}
+      initContainers:
+        {{- if .Values.dbInit.enabled }}
+        - name: wait-db-init
+          image: {{ include "azerothcore.kubectlImage" . }}
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          command: ["kubectl"]
+          args:
+            - wait
+            - --for=condition=complete
+            - job/{{ include "azerothcore.dbInitJobName" . }}
+            - --timeout=3600s
+        {{- end }}
+      containers:
+        - name: authserver
+          image: {{ include "azerothcore.image" (dict "ctx" . "component" "authserver") }}
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          env:
+            - name: AC_LOGS_DIR
+              value: /azerothcore/env/dist/logs
+            {{- include "azerothcore.dbEnv" . | nindent 12 }}
+            {{- include "azerothcore.configEnv" .Values.authserver.config | nindent 12 }}
+            {{- with .Values.authserver.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          ports:
+            - name: auth
+              containerPort: 3724
+          startupProbe:
+            tcpSocket:
+              port: auth
+            periodSeconds: 5
+            failureThreshold: 24
+          livenessProbe:
+            tcpSocket:
+              port: auth
+            periodSeconds: 20
+          resources:
+            {{- toYaml .Values.authserver.resources | nindent 12 }}

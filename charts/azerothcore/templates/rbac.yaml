@@ -1,0 +1,32 @@
+# Minimal RBAC so server pods can wait for the db-init Job to complete.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "azerothcore.serviceAccountName" . }}
+  labels:
+    {{- include "azerothcore.labels" . | nindent 4 }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "azerothcore.serviceAccountName" . }}
+  labels:
+    {{- include "azerothcore.labels" . | nindent 4 }}
+rules:
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "azerothcore.serviceAccountName" . }}
+  labels:
+    {{- include "azerothcore.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "azerothcore.serviceAccountName" . }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "azerothcore.serviceAccountName" . }}

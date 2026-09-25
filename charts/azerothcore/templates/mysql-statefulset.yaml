@@ -1,0 +1,69 @@
+{{- if .Values.mysql.enabled -}}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ printf "%s-mysql" (include "azerothcore.fullname" .) }}
+  labels:
+    {{- include "azerothcore.labels" . | nindent 4 }}
+    app.kubernetes.io/component: mysql
+spec:
+  serviceName: {{ printf "%s-mysql" (include "azerothcore.fullname" .) }}
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "azerothcore.selectorLabels" (dict "ctx" . "component" "mysql") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "azerothcore.selectorLabels" (dict "ctx" . "component" "mysql") | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      {{- include "azerothcore.pull" . | nindent 6 }}
+      containers:
+        - name: mysql
+          image: {{ include "azerothcore.renderImage" .Values.mysql.image }}
+          imagePullPolicy: {{ $.Values.imagePullPolicy }}
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "azerothcore.db.secretName" . }}
+                  key: {{ include "azerothcore.db.secretKey" . }}
+            # Allow root logins from other pods (matches upstream docker-compose).
+            - name: MYSQL_ROOT_HOST
+              value: "%"
+          ports:
+            - name: mysql
+              containerPort: 3306
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/mysql
+          readinessProbe:
+            exec:
+              command: ["sh", "-c", "mysqladmin ping -h 127.0.0.1 -u root -p\"$MYSQL_ROOT_PASSWORD\" --silent"]
+            periodSeconds: 5
+            failureThreshold: 20
+          livenessProbe:
+            exec:
+              command: ["sh", "-c", "mysqladmin ping -h 127.0.0.1 -u root -p\"$MYSQL_ROOT_PASSWORD\" --silent"]
+            periodSeconds: 20
+          resources:
+            {{- toYaml .Values.mysql.resources | nindent 12 }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        {{- if .Values.mysql.storage.storageClass }}
+        storageClassName: {{ .Values.mysql.storage.storageClass | quote }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.mysql.storage.size }}
+{{- end }}

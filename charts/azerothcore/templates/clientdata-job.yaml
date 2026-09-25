@@ -1,0 +1,41 @@
+{{- if .Values.clientData.download -}}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "azerothcore.clientDataJobName" . }}
+  labels:
+    {{- include "azerothcore.labels" . | nindent 4 }}
+    app.kubernetes.io/component: client-data
+spec:
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        {{- include "azerothcore.selectorLabels" (dict "ctx" . "component" "client-data") | nindent 8 }}
+    spec:
+      {{- include "azerothcore.pull" . | nindent 6 }}
+      # local-path-style provisioners create root-owned directories; the
+      # download runs as root and fixes read permissions for the servers.
+      securityContext:
+        runAsUser: 0
+        runAsGroup: 0
+      restartPolicy: Never
+      containers:
+        - name: download
+          image: {{ include "azerothcore.image" (dict "ctx" . "component" "clientData") }}
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          command:
+            - bash
+            - -c
+            - >-
+              source /azerothcore/apps/installer/includes/functions.sh &&
+              inst_download_client_data &&
+              chmod -R a+rX /azerothcore/env/dist/data
+          volumeMounts:
+            - name: data
+              mountPath: /azerothcore/env/dist/data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ include "azerothcore.dataClaimName" . }}
+{{- end }}

@@ -1,0 +1,202 @@
+# -- Base image flavor.
+# vanilla    → upstream azerothcore/azerothcore-wotlk images, no mods (default).
+# playerbots → images built from mod-playerbots/azerothcore-wotlk @ Playerbot
+#              with mod-playerbots compiled in.
+# Non-vanilla flavors are built by this project's CI or by `make images`
+# (see build/ in the chart repository) and pulled from `flavorRegistry`.
+# Any images.* entry you override explicitly is always used verbatim,
+# regardless of flavor.
+#
+# Lua scripting (ALE, formerly mod-eluna) is built into modern AzerothCore
+# images: enable it via worldserver.config."ALE.Enabled": 1 and mount scripts
+# via worldserver.elunaScripts.existingClaim. No separate flavor needed.
+flavor: vanilla
+
+# -- Registry INCLUDING namespace that hosts the non-vanilla flavor images,
+# e.g. "ghcr.io/myorg". Required when flavor != vanilla unless every
+# images.* entry is overridden.
+flavorRegistry: ""
+
+imagePullSecrets: []
+imagePullPolicy: IfNotPresent
+
+images:
+  # renovate: datasource=docker depName=acore/ac-wotlk-worldserver
+  worldserver:
+    registry: docker.io
+    repository: acore/ac-wotlk-worldserver
+    tag: 17.0.0-dev
+    digest: sha256:75c1e7124eca8a6c32afa6e5fbda9eceff55c5e3aec06ecd99771de544d0a745
+  # renovate: datasource=docker depName=acore/ac-wotlk-authserver
+  authserver:
+    registry: docker.io
+    repository: acore/ac-wotlk-authserver
+    tag: 17.0.0-dev
+    digest: sha256:549999fdb557231197ac14f614efc4776fb5cae15589a1c12410a734b322b62c
+  # renovate: datasource=docker depName=acore/ac-wotlk-db-import
+  dbImport:
+    registry: docker.io
+    repository: acore/ac-wotlk-db-import
+    tag: 17.0.0-dev
+    digest: sha256:fe879f3bdf47c6db45eebb474c3174dcff047726732d6778bacf77cd0a7b800c
+  # renovate: datasource=docker depName=acore/ac-wotlk-client-data
+  clientData:
+    registry: docker.io
+    repository: acore/ac-wotlk-client-data
+    tag: 17.0.0-dev
+    digest: sha256:752d8cb140b824e3c5732faa5231cf6317dce1f205878a87ebb5190c21aaac9e
+  # kubectl image used by the init containers that wait for Jobs.
+  # renovate: datasource=docker depName=alpine/k8s
+  kubectl:
+    registry: docker.io
+    repository: alpine/k8s
+    tag: 1.35.8
+    digest: ""
+
+mysql:
+  # -- Deploy a bundled MySQL 8.4 StatefulSet (mirrors upstream docker-compose).
+  # Set to false to use `externalDatabase` instead.
+  enabled: true
+  # renovate: datasource=docker depName=library/mysql
+  image:
+    registry: docker.io
+    repository: library/mysql
+    tag: 8.4.11
+    digest: ""
+  # -- Root password for the bundled MySQL. Matches the upstream docker-compose
+  # default. CHANGE THIS for anything but local play.
+  rootPassword: password
+  # -- Use an existing secret instead of rootPassword. The secret must contain
+  # the key named by existingSecretPasswordKey.
+  existingSecret: ""
+  existingSecretPasswordKey: mysql-root-password
+  storage:
+    size: 8Gi
+    # -- Empty = cluster default StorageClass.
+    storageClass: ""
+  resources:
+    requests:
+      cpu: 100m
+      memory: 512Mi
+    limits:
+      # -- The initial world-database import is memory-hungry. 1 Gi is NOT
+      # enough and gets mysqld OOMKilled mid-import.
+      memory: 2Gi
+
+externalDatabase:
+  # -- Used only when mysql.enabled=false. Hostname/IP of an existing MySQL.
+  host: ""
+  port: 3306
+  user: root
+  # -- Secret holding the password for `user` (key: existingSecretPasswordKey).
+  existingSecret: ""
+  existingSecretPasswordKey: password
+
+clientData:
+  # -- Run a Job that downloads the game data (maps/vmaps/mmaps/dbc, ~5 GB,
+  # 10-15 min on first install) into the data volume. Idempotent: it skips
+  # when the data is already present.
+  download: true
+  # -- Use an existing PVC that already contains extracted client data
+  # (mounted at /azerothcore/env/dist/data). Created for you when empty.
+  existingClaim: ""
+  storage:
+    size: 20Gi
+    storageClass: ""
+
+dbInit:
+  # -- Run the db-import Job (creates databases, applies all core and module
+  # SQL migrations). Re-runs on every chart upgrade so migrations track the
+  # image version.
+  enabled: true
+  realm:
+    # -- Address written to acore_auth.realmlist.address: what game CLIENTS use
+    # to reach the worldserver. 127.0.0.1 is correct when you play on the same
+    # machine the NodePort/port-forward is on. Set to a LAN/WAN address for
+    # remote players. Empty = do not touch the realmlist table.
+    address: 127.0.0.1
+    # -- Optionally rename realm id 1. Empty = keep the default name.
+    name: ""
+
+authserver:
+  # -- authserver.conf keys, verbatim from the .dist file, e.g.
+  # config:
+  #   WrongPass.MaxCount: 5
+  # Rendered as AC_* environment variables (the core maps them natively).
+  config: {}
+  # -- Extra raw environment variables (appended after config).
+  extraEnv: []
+  service:
+    type: NodePort
+    port: 3724
+    # -- null = let Kubernetes allocate. Set e.g. 33724 for a fixed port.
+    nodePort: null
+    annotations: {}
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 512Mi
+
+worldserver:
+  # -- worldserver.conf keys, verbatim from the .dist file, e.g.
+  # config:
+  #   Rate.XP.Kill: 3
+  #   AllowTwoSide.Interaction.Calendar: 1
+  # Module configuration keys work exactly the same way.
+  config: {}
+  extraEnv: []
+  soap:
+    # -- Enable the SOAP remote console (port 7878, ClusterIP only).
+    # NOTE: SOAP authenticates with an in-game GM account, so it cannot create
+    # your first account. Use `kubectl attach` to the worldserver console for
+    # that (see NOTES.txt).
+    enabled: false
+  elunaScripts:
+    # -- Existing PVC with Lua scripts, mounted at /azerothcore/env/dist/lua_scripts.
+    # Only useful with images that have mod-eluna compiled in.
+    existingClaim: ""
+  service:
+    type: NodePort
+    port: 8085
+    nodePort: null
+    annotations: {}
+  resources:
+    requests:
+      cpu: 500m
+      # -- Vanilla idles around 1.5-2 Gi. Playerbots with many bots needs
+      # 4-8 Gi. Raise both values there.
+      memory: 2Gi
+    limits:
+      memory: 4Gi
+  startupProbe:
+    periodSeconds: 10
+    # -- World load can take several minutes (longer under emulation or with
+    # playerbots). 90 * 10s = 15 min budget.
+    failureThreshold: 90
+
+# -- Expose the game ports via Gateway API TCPRoutes.
+# Requires Gateway API CRDs (TCPRoute is experimental-channel: v1alpha2. Some
+# controllers serve v1) and a TCPRoute-capable controller, for example NGINX
+# Gateway Fabric, Envoy Gateway, Kong, or Traefik with experimentalChannel
+# enabled.
+# The chart fails with a clear message when the cluster serves neither version.
+# NOTE: plain Ingress is NOT an option for AzerothCore, because the auth and
+# world protocols are raw TCP, and Ingress routes HTTP only. ingress-nginx
+# users: use its tcp-services ConfigMap instead (no Gateway API there).
+gateway:
+  enabled: false
+  # -- Gateways/listeners these routes attach to. Empty = attach to all
+  # compatible listeners of Gateways in the release namespace. Example:
+  # parentRefs:
+  #   - name: main
+  #     namespace: gateway-system
+  #     sectionName: tcp
+  parentRefs: []
+  annotations: {}
+
+nameOverride: ""
+fullnameOverride: ""
+podAnnotations: {}
+podLabels: {}

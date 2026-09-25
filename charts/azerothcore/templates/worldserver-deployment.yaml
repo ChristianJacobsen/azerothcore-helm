@@ -1,0 +1,112 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ printf "%s-worldserver" (include "azerothcore.fullname" .) }}
+  labels:
+    {{- include "azerothcore.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worldserver
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "azerothcore.selectorLabels" (dict "ctx" . "component" "worldserver") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "azerothcore.selectorLabels" (dict "ctx" . "component" "worldserver") | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      {{- include "azerothcore.pull" . | nindent 6 }}
+      serviceAccountName: {{ include "azerothcore.serviceAccountName" . }}
+      initContainers:
+        {{- if .Values.dbInit.enabled }}
+        - name: wait-db-init
+          image: {{ include "azerothcore.kubectlImage" . }}
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          command: ["kubectl"]
+          args:
+            - wait
+            - --for=condition=complete
+            - job/{{ include "azerothcore.dbInitJobName" . }}
+            - --timeout=3600s
+        {{- end }}
+        - name: wait-client-data
+          image: {{ include "azerothcore.image" (dict "ctx" . "component" "worldserver") }}
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          args:
+            - bash
+            - -c
+            - >-
+              until [ -n "$(ls -A /azerothcore/env/dist/data 2>/dev/null)" ]; do
+              echo "waiting for client data to be downloaded..."; sleep 5; done;
+              echo "client data present"
+          volumeMounts:
+            - name: data
+              mountPath: /azerothcore/env/dist/data
+              readOnly: true
+      containers:
+        - name: worldserver
+          image: {{ include "azerothcore.image" (dict "ctx" . "component" "worldserver") }}
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          # Interactive AzerothCore console: `kubectl attach -it <pod> -c worldserver`
+          stdin: true
+          tty: true
+          env:
+            - name: AC_DATA_DIR
+              value: /azerothcore/env/dist/data
+            - name: AC_LOGS_DIR
+              value: /azerothcore/env/dist/logs
+            {{- include "azerothcore.dbEnv" . | nindent 12 }}
+            {{- include "azerothcore.dbEnvWorld" . | nindent 12 }}
+            {{- if .Values.worldserver.soap.enabled }}
+            - name: AC_SOAP_ENABLED
+              value: "1"
+            {{- end }}
+            {{- include "azerothcore.configEnv" .Values.worldserver.config | nindent 12 }}
+            {{- with .Values.worldserver.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          ports:
+            - name: world
+              containerPort: 8085
+            {{- if .Values.worldserver.soap.enabled }}
+            - name: soap
+              containerPort: 7878
+            {{- end }}
+          volumeMounts:
+            - name: data
+              mountPath: /azerothcore/env/dist/data
+              readOnly: true
+            {{- if .Values.worldserver.elunaScripts.existingClaim }}
+            - name: eluna-scripts
+              mountPath: /azerothcore/env/dist/lua_scripts
+              readOnly: true
+            {{- end }}
+          startupProbe:
+            tcpSocket:
+              port: world
+            periodSeconds: {{ .Values.worldserver.startupProbe.periodSeconds }}
+            failureThreshold: {{ .Values.worldserver.startupProbe.failureThreshold }}
+          livenessProbe:
+            tcpSocket:
+              port: world
+            periodSeconds: 30
+          resources:
+            {{- toYaml .Values.worldserver.resources | nindent 12 }}
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ include "azerothcore.dataClaimName" . }}
+        {{- if .Values.worldserver.elunaScripts.existingClaim }}
+        - name: eluna-scripts
+          persistentVolumeClaim:
+            claimName: {{ .Values.worldserver.elunaScripts.existingClaim }}
+        {{- end }}

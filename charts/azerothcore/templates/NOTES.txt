@@ -1,0 +1,38 @@
+AzerothCore ({{ .Chart.Name }} {{ .Chart.Version }}), flavor: {{ .Values.flavor }}
+
+FIRST BOOT takes a while (this is normal):
+  1. client-data download   ~10-15 min (one-off, ~5 GB)
+  2. db-import              a few minutes (SQL migrations)
+  3. worldserver world load 1-10 min (longer under emulation or with playerbots)
+
+Watch progress:
+  kubectl -n {{ .Release.Namespace }} get pods -w
+  kubectl -n {{ .Release.Namespace }} logs -f job/{{ include "azerothcore.clientDataJobName" . }}
+  kubectl -n {{ .Release.Namespace }} logs -f job/{{ include "azerothcore.dbInitJobName" . }} -c dbimport
+
+CONNECT A GAME CLIENT (WotLK 3.3.5a):
+  Auth  port: kubectl -n {{ .Release.Namespace }} get svc {{ include "azerothcore.fullname" . }}-authserver
+  World port: kubectl -n {{ .Release.Namespace }} get svc {{ include "azerothcore.fullname" . }}-worldserver
+  Set realmlist.wtf to the authserver address. The realm address stored in the
+  database (dbInit.realm.address, currently "{{ .Values.dbInit.realm.address }}")
+  must be what clients use to reach the WORLDSERVER. If you play from another
+  machine, re-run helm upgrade with --set dbInit.realm.address=<LAN or WAN IP>.
+
+CREATE YOUR FIRST ACCOUNT (GM):
+  kubectl -n {{ .Release.Namespace }} attach -it deploy/{{ include "azerothcore.fullname" . }}-worldserver -c worldserver
+  AC> account create <user> <password>
+  AC> account set gmlevel <user> 3 -1
+  AC> account set addon <user> 2
+  Detach with ctrl-p ctrl-q. Do NOT press ctrl-c: it kills the worldserver.
+
+{{- if .Values.gateway.enabled }}
+GATEWAY API: the chart created a TCPRoute for each game port. Point
+dbInit.realm.address (and the client realmlist.wtf) at the external address of
+your Gateway, and set authserver.service.type=ClusterIP and
+worldserver.service.type=ClusterIP.
+{{- end }}
+
+{{- if ne .Values.mysql.rootPassword "password" }}{{ else }}
+WARNING: Change mysql.rootPassword (or set mysql.existingSecret) before you
+expose any port. MySQL uses the default root password "password".
+{{- end }}

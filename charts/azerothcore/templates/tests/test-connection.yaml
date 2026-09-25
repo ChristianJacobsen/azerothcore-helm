@@ -1,0 +1,24 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ printf "%s-connection-test" (include "azerothcore.fullname" .) }}
+  labels:
+    {{- include "azerothcore.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  restartPolicy: Never
+  containers:
+    - name: tcp-check
+      # Test-only image; pinned tag.
+      image: busybox:1.37.0
+      command:
+        - sh
+        - -c
+        - |
+          set -e
+          nc -z -w 5 {{ include "azerothcore.fullname" . }}-authserver 3724
+          echo "authserver:3724 reachable"
+          nc -z -w 5 {{ include "azerothcore.fullname" . }}-worldserver 8085
+          echo "worldserver:8085 reachable"

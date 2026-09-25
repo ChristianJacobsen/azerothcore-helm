@@ -1,0 +1,76 @@
+name: chart-ci
+
+on:
+  push:
+    branches: [main]
+    paths: ["charts/**", "build/**", ".github/workflows/chart-ci.yaml"]
+  pull_request:
+    paths: ["charts/**", "build/**", ".github/workflows/chart-ci.yaml"]
+
+jobs:
+  lint:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: azure/setup-helm@v4
+
+      - name: helm lint (default values)
+        run: helm lint charts/azerothcore
+
+      - name: helm lint (playerbots flavor)
+        run: helm lint charts/azerothcore --set flavor=playerbots --set flavorRegistry=ghcr.io/example
+
+      - name: helm lint (external database)
+        run: >
+          helm lint charts/azerothcore
+          --set mysql.enabled=false
+          --set externalDatabase.host=db.example.com
+          --set externalDatabase.existingSecret=db-creds
+
+      - name: render must contain converted AC_* env vars
+        run: |
+          set -euo pipefail
+          rendered="$(helm template ac charts/azerothcore \
+            --set 'worldserver.config.Rate\.XP\.Kill'=3 \
+            --set 'authserver.config.WrongPass\.MaxCount'=5)"
+          grep -q "AC_RATE_XP_KILL" <<< "$rendered"
+          grep -q "AC_WRONG_PASS_MAX_COUNT" <<< "$rendered"
+
+      - name: helm template (gateway api, both served versions)
+        run: |
+          set -euo pipefail
+          helm template ac charts/azerothcore --set gateway.enabled=true \
+            --set 'gateway.parentRefs[0].name'=main \
+            --set 'gateway.parentRefs[0].namespace'=gateway-system \
+            --api-versions gateway.networking.k8s.io/v1alpha2 \
+            | grep -q "apiVersion: gateway.networking.k8s.io/v1alpha2"
+          helm template ac charts/azerothcore --set gateway.enabled=true \
+            --api-versions gateway.networking.k8s.io/v1 \
+            | grep -q "apiVersion: gateway.networking.k8s.io/v1"
+
+      - name: gateway without cluster CRDs must fail
+        run: |
+          if helm template ac charts/azerothcore --set gateway.enabled=true >/dev/null 2>&1; then
+            echo "expected template failure without TCPRoute in cluster capabilities" >&2
+            exit 1
+          fi
+
+      - name: playerbots flavor without registry must fail
+        run: |
+          if helm template ac charts/azerothcore --set flavor=playerbots >/dev/null 2>&1; then
+            echo "expected template failure without flavorRegistry" >&2
+            exit 1
+          fi
+
+      - name: kubeconform
+        run: |
+          helm template ac charts/azerothcore | docker run --rm -i \
+            ghcr.io/yannh/kubeconform:v0.7.0 \
+            -summary -strict -ignore-missing-schemas -kubernetes-version 1.32.0
+
+  shellcheck:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - run: shellcheck build/build-images.sh

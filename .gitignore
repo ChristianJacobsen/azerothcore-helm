@@ -1,0 +1,12 @@
+# Build scratch (cloned sources, buildx cache)
+build/.build/
+# Generated per-user image values
+build/images.generated.yaml
+
+# OS noise
+.DS_Store
+
+# Helm artifacts
+charts/*/charts/
+charts/*/Chart.lock
+*.tgz
