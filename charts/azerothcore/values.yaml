@@ -64,7 +64,7 @@ images:
   kubectl:
     registry: docker.io
     repository: alpine/k8s
-    tag: 1.35.8
+    tag: 1.37.0
     digest: ""
   # -- Python, for the account SQL of the db-init Job and for helm test.
   # renovate: datasource=docker depName=library/python
