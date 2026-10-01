@@ -14,11 +14,14 @@ keywords:
   - wow
   - wotlk
   - game-server
-home: https://github.com/azerothcore/azerothcore-wotlk
+home: https://github.com/ChristianJacobsen/azerothcore-helm
 sources:
+  - https://github.com/ChristianJacobsen/azerothcore-helm
   - https://github.com/azerothcore/azerothcore-wotlk
+  - https://github.com/mod-playerbots/azerothcore-wotlk
   - https://github.com/mod-playerbots/mod-playerbots
 annotations:
   artifacthub.io/license: GPL-2.0-or-later
 maintainers:
-  - name: azerothcore-helm
+  - name: ChristianJacobsen
+    url: https://github.com/ChristianJacobsen
