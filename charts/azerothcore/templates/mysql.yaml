@@ -1,4 +1,20 @@
 {{- if .Values.mysql.enabled -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ printf "%s-mysql" (include "azerothcore.fullname" .) }}
+  labels:
+    {{- include "azerothcore.labels" . | nindent 4 }}
+    app.kubernetes.io/component: mysql
+spec:
+  type: ClusterIP
+  ports:
+    - name: mysql
+      port: 3306
+      targetPort: mysql
+  selector:
+    {{- include "azerothcore.selectorLabels" (dict "ctx" . "component" "mysql") | nindent 4 }}
+---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -14,28 +30,25 @@ spec:
       {{- include "azerothcore.selectorLabels" (dict "ctx" . "component" "mysql") | nindent 6 }}
   template:
     metadata:
-      labels:
-        {{- include "azerothcore.selectorLabels" (dict "ctx" . "component" "mysql") | nindent 8 }}
-        {{- with .Values.podLabels }}
-        {{- toYaml . | nindent 8 }}
-        {{- end }}
-      {{- with .Values.podAnnotations }}
-      annotations:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
+      {{- include "azerothcore.podMetadata" (dict "ctx" . "component" "mysql") | nindent 6 }}
     spec:
-      {{- include "azerothcore.pull" . | nindent 6 }}
+      {{- include "azerothcore.pullSecrets" . | nindent 6 }}
+      terminationGracePeriodSeconds: 60
       containers:
         - name: mysql
           image: {{ include "azerothcore.renderImage" .Values.mysql.image }}
-          imagePullPolicy: {{ $.Values.imagePullPolicy }}
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          {{- with .Values.mysql.extraArgs }}
+          args:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           env:
             - name: MYSQL_ROOT_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: {{ include "azerothcore.db.secretName" . }}
-                  key: {{ include "azerothcore.db.secretKey" . }}
-            # Allow root logins from other pods (matches upstream docker-compose).
+                  key: root-password
+            # The db-init Job logs in as root from its own pod.
             - name: MYSQL_ROOT_HOST
               value: "%"
           ports:
@@ -46,13 +59,15 @@ spec:
               mountPath: /var/lib/mysql
           readinessProbe:
             exec:
-              command: ["sh", "-c", "mysqladmin ping -h 127.0.0.1 -u root -p\"$MYSQL_ROOT_PASSWORD\" --silent"]
+              command: ["sh", "-c", "MYSQL_PWD=\"$MYSQL_ROOT_PASSWORD\" mysqladmin ping -h 127.0.0.1 -u root --silent"]
             periodSeconds: 5
             failureThreshold: 20
           livenessProbe:
             exec:
-              command: ["sh", "-c", "mysqladmin ping -h 127.0.0.1 -u root -p\"$MYSQL_ROOT_PASSWORD\" --silent"]
+              command: ["sh", "-c", "MYSQL_PWD=\"$MYSQL_ROOT_PASSWORD\" mysqladmin ping -h 127.0.0.1 -u root --silent"]
+            initialDelaySeconds: 60
             periodSeconds: 20
+            failureThreshold: 6
           resources:
             {{- toYaml .Values.mysql.resources | nindent 12 }}
   volumeClaimTemplates:
@@ -60,8 +75,8 @@ spec:
         name: data
       spec:
         accessModes: ["ReadWriteOnce"]
-        {{- if .Values.mysql.storage.storageClass }}
-        storageClassName: {{ .Values.mysql.storage.storageClass | quote }}
+        {{- with .Values.mysql.storage.storageClass }}
+        storageClassName: {{ . | quote }}
         {{- end }}
         resources:
           requests:

@@ -24,7 +24,7 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
     spec:
-      {{- include "azerothcore.pull" . | nindent 6 }}
+      {{- include "azerothcore.pullSecrets" . | nindent 6 }}
       serviceAccountName: {{ include "azerothcore.serviceAccountName" . }}
       initContainers:
         # Module SQL data (for example the mod-playerbots base SQL for
@@ -41,7 +41,7 @@ spec:
               mountPath: /module-data
         {{- if .Values.dbInit.enabled }}
         - name: wait-db-init
-          image: {{ include "azerothcore.kubectlImage" . }}
+          image: {{ include "azerothcore.renderImage" .Values.images.kubectl }}
           imagePullPolicy: {{ .Values.imagePullPolicy }}
           command: ["kubectl"]
           args:
@@ -76,8 +76,9 @@ spec:
               value: /azerothcore/env/dist/data
             - name: AC_LOGS_DIR
               value: /azerothcore/env/dist/logs
-            {{- include "azerothcore.dbEnv" . | nindent 12 }}
-            {{- include "azerothcore.dbEnvWorld" . | nindent 12 }}
+            {{- include "azerothcore.db.env" (dict "ctx" . "world" true) | nindent 12 }}
+            - name: AC_REALM_ID
+              value: {{ .Values.dbInit.realm.id | int | quote }}
             {{- if .Values.worldserver.soap.enabled }}
             - name: AC_SOAP_ENABLED
               value: "1"

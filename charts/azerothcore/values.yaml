@@ -62,9 +62,27 @@ images:
     tag: 1.35.8
     digest: ""
 
+database:
+  # -- Database user for the servers and dbimport. The db-init Job creates it
+  # when it has admin access (bundled MySQL, or externalDatabase.adminUser).
+  user: acore
+  # -- Password of `user`. Empty = the chart generates one and keeps it
+  # across upgrades. Do not use ";": it separates the fields of the
+  # AzerothCore database connection strings.
+  password: ""
+  # -- Existing Secret with the passwords. Keys: `password` (for `user`),
+  # `root-password` (bundled MySQL) or `admin-password` (external database
+  # with adminUser). Overrides the password values above.
+  existingSecret: ""
+  names:
+    auth: acore_auth
+    world: acore_world
+    characters: acore_characters
+    # -- Used by the playerbots flavor only. The worldserver fills it.
+    playerbots: acore_playerbots
+
 mysql:
-  # -- Deploy a bundled MySQL 8.4 StatefulSet (mirrors upstream docker-compose).
-  # Set to false to use `externalDatabase` instead.
+  # -- false = use `externalDatabase`.
   enabled: true
   # renovate: datasource=docker depName=library/mysql
   image:
@@ -72,34 +90,41 @@ mysql:
     repository: library/mysql
     tag: 8.4.11
     digest: ""
-  # -- Root password for the bundled MySQL. Matches the upstream docker-compose
-  # default. CHANGE THIS for anything but local play.
-  rootPassword: password
-  # -- Use an existing secret instead of rootPassword. The secret must contain
-  # the key named by existingSecretPasswordKey.
-  existingSecret: ""
-  existingSecretPasswordKey: mysql-root-password
+  # -- Root password. Empty = generated and kept across upgrades. MySQL reads
+  # it only when it initializes an empty data directory.
+  rootPassword: ""
+  # -- Extra mysqld arguments.
+  # --skip-log-bin: MySQL 8.4 keeps a binary log (for replication) by
+  #   default and flushes it to disk on every statement. The world import
+  #   writes several hundred MB of it.
+  # --innodb-flush-log-at-trx-commit=2: flush the InnoDB log once a second
+  #   instead of at every commit. A MySQL crash loses nothing. A node crash
+  #   can lose the last second of writes.
+  extraArgs:
+    - --innodb-buffer-pool-size=512M
+    - --skip-log-bin
+    - --innodb-flush-log-at-trx-commit=2
   storage:
-    size: 8Gi
-    # -- Empty = cluster default StorageClass.
+    size: 10Gi
+    # -- Empty = the default StorageClass of the cluster.
     storageClass: ""
   resources:
     requests:
       cpu: 100m
-      memory: 512Mi
+      memory: 768Mi
     limits:
-      # -- The initial world-database import is memory-hungry. 1 Gi is NOT
-      # enough and gets mysqld OOMKilled mid-import.
+      # -- The world import needs headroom above the buffer pool. With 1 GiB,
+      # the kernel stops mysqld during the import.
       memory: 2Gi
 
 externalDatabase:
-  # -- Used only when mysql.enabled=false. Hostname/IP of an existing MySQL.
+  # -- Used only when mysql.enabled=false.
   host: ""
   port: 3306
-  user: root
-  # -- Secret holding the password for `user` (key: existingSecretPasswordKey).
-  existingSecret: ""
-  existingSecretPasswordKey: password
+  # -- Admin user that can create databases and users. The db-init Job uses
+  # it to create the databases and database.user. Empty = the databases and
+  # the user exist already, and database.user owns them.
+  adminUser: ""
 
 clientData:
   # -- Run a Job that downloads the game data (maps/vmaps/mmaps/dbc, ~5 GB,
@@ -114,18 +139,25 @@ clientData:
     storageClass: ""
 
 dbInit:
-  # -- Run the db-import Job (creates databases, applies all core and module
-  # SQL migrations). Re-runs on every chart upgrade so migrations track the
-  # image version.
+  # -- Run the db-init Job on every install and upgrade. It creates the
+  # databases, runs dbimport (the SQL updates of the core and the modules),
+  # and sets the realm below.
   enabled: true
   realm:
-    # -- Address written to acore_auth.realmlist.address: what game CLIENTS use
-    # to reach the worldserver. 127.0.0.1 is correct when you play on the same
-    # machine the NodePort/port-forward is on. Set to a LAN/WAN address for
-    # remote players. Empty = do not touch the realmlist table.
+    # -- Must match RealmID of the worldserver, which the chart sets.
+    id: 1
+    # -- Realm name in the realm list. Empty = keep the name in the database.
+    name: "AzerothCore"
+    # -- Address that game clients use to reach the worldserver. 127.0.0.1
+    # works when you play on the machine that exposes the service. For LAN or
+    # WAN players, set the LAN or WAN address (or the Gateway address).
     address: 127.0.0.1
-    # -- Optionally rename realm id 1. Empty = keep the default name.
-    name: ""
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      memory: 1Gi
 
 authserver:
   # -- authserver.conf keys, verbatim from the .dist file, e.g.

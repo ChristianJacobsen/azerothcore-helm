@@ -35,20 +35,59 @@
         }
       }
     },
+    "database": {
+      "type": "object",
+      "properties": {
+        "user": {
+          "type": "string",
+          "minLength": 1
+        },
+        "password": {
+          "type": "string"
+        },
+        "existingSecret": {
+          "type": "string"
+        },
+        "names": {
+          "type": "object",
+          "properties": {
+            "auth": {
+              "type": "string",
+              "minLength": 1
+            },
+            "world": {
+              "type": "string",
+              "minLength": 1
+            },
+            "characters": {
+              "type": "string",
+              "minLength": 1
+            },
+            "playerbots": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      }
+    },
     "mysql": {
       "type": "object",
       "properties": {
         "enabled": {
           "type": "boolean"
         },
+        "image": {
+          "$ref": "#/definitions/image"
+        },
         "rootPassword": {
           "type": "string"
         },
-        "existingSecret": {
-          "type": "string"
-        },
-        "existingSecretPasswordKey": {
-          "type": "string"
+        "extraArgs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         }
       }
     },
@@ -63,13 +102,7 @@
           "minimum": 1,
           "maximum": 65535
         },
-        "user": {
-          "type": "string"
-        },
-        "existingSecret": {
-          "type": "string"
-        },
-        "existingSecretPasswordKey": {
+        "adminUser": {
           "type": "string"
         }
       }
@@ -94,10 +127,14 @@
         "realm": {
           "type": "object",
           "properties": {
-            "address": {
-              "type": "string"
+            "id": {
+              "type": "integer",
+              "minimum": 1
             },
             "name": {
+              "type": "string"
+            },
+            "address": {
               "type": "string"
             }
           }

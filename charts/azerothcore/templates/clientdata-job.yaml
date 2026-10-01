@@ -13,7 +13,7 @@ spec:
       labels:
         {{- include "azerothcore.selectorLabels" (dict "ctx" . "component" "client-data") | nindent 8 }}
     spec:
-      {{- include "azerothcore.pull" . | nindent 6 }}
+      {{- include "azerothcore.pullSecrets" . | nindent 6 }}
       # local-path-style provisioners create root-owned directories; the
       # download runs as root and fixes read permissions for the servers.
       securityContext:

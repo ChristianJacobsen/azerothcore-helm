@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ printf "%s-scripts" (include "azerothcore.fullname" .) }}
+  labels:
+    {{- include "azerothcore.labels" . | nindent 4 }}
+data:
+  {{- range $file := list "db-init.sh" }}
+  {{ $file }}: |
+    {{- $.Files.Get (printf "files/%s" $file) | nindent 4 }}
+  {{- end }}

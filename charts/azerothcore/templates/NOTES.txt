@@ -32,7 +32,3 @@ your Gateway, and set authserver.service.type=ClusterIP and
 worldserver.service.type=ClusterIP.
 {{- end }}
 
-{{- if ne .Values.mysql.rootPassword "password" }}{{ else }}
-WARNING: Change mysql.rootPassword (or set mysql.existingSecret) before you
-expose any port. MySQL uses the default root password "password".
-{{- end }}

@@ -1,9 +1,3 @@
-{{/*
-======================================================================
-  Naming
-======================================================================
-*/}}
-
 {{- define "azerothcore.name" -}}
 {{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" -}}
 {{- end -}}
@@ -25,12 +19,6 @@
 {{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" -}}
 {{- end -}}
 
-{{/*
-======================================================================
-  Labels
-======================================================================
-*/}}
-
 {{- define "azerothcore.labels" -}}
 helm.sh/chart: {{ include "azerothcore.chart" . }}
 app.kubernetes.io/name: {{ include "azerothcore.name" . }}
@@ -42,11 +30,32 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end }}
 {{- end -}}
 
-{{/* Usage: include "azerothcore.selectorLabels" (dict "ctx" . "component" "worldserver") */}}
 {{- define "azerothcore.selectorLabels" -}}
 app.kubernetes.io/name: {{ include "azerothcore.name" .ctx }}
 app.kubernetes.io/instance: {{ .ctx.Release.Name }}
 app.kubernetes.io/component: {{ .component }}
+{{- end -}}
+
+{{- define "azerothcore.podMetadata" -}}
+labels:
+  {{- include "azerothcore.selectorLabels" . | nindent 2 }}
+  {{- with .ctx.Values.podLabels }}
+  {{- toYaml . | nindent 2 }}
+  {{- end }}
+{{- with .ctx.Values.podAnnotations }}
+annotations:
+  {{- toYaml . | nindent 2 }}
+{{- end }}
+{{- end -}}
+
+{{- define "azerothcore.renderImage" -}}
+{{- $registry := .registry | default "docker.io" -}}
+{{- $tag := .tag | default "latest" -}}
+{{- if .digest -}}
+{{- printf "%s/%s:%s@%s" $registry .repository (toString $tag) .digest -}}
+{{- else -}}
+{{- printf "%s/%s:%s" $registry .repository (toString $tag) -}}
+{{- end -}}
 {{- end -}}
 
 {{- define "azerothcore.image" -}}
@@ -62,21 +71,12 @@ app.kubernetes.io/component: {{ .component }}
 {{- include "azerothcore.renderImage" $img -}}
 {{- end -}}
 
-{{/*
-Render imagePullSecrets + pull policy blocks.
-*/}}
-{{- define "azerothcore.pull" -}}
+{{- define "azerothcore.pullSecrets" -}}
 {{- with .Values.imagePullSecrets }}
 imagePullSecrets:
   {{- toYaml . | nindent 2 }}
 {{- end }}
 {{- end -}}
-
-{{/*
-======================================================================
-  Database
-======================================================================
-*/}}
 
 {{- define "azerothcore.db.host" -}}
 {{- if .Values.mysql.enabled -}}
@@ -87,55 +87,46 @@ imagePullSecrets:
 {{- end -}}
 
 {{- define "azerothcore.db.port" -}}
-{{- if .Values.mysql.enabled -}}3306{{- else -}}{{- .Values.externalDatabase.port -}}{{- end -}}
-{{- end -}}
-
-{{- define "azerothcore.db.user" -}}
-{{- if .Values.mysql.enabled -}}root{{- else -}}{{- .Values.externalDatabase.user -}}{{- end -}}
+{{- if .Values.mysql.enabled -}}3306{{- else -}}{{- .Values.externalDatabase.port | int -}}{{- end -}}
 {{- end -}}
 
 {{- define "azerothcore.db.secretName" -}}
-{{- if .Values.mysql.enabled -}}
-{{- if .Values.mysql.existingSecret -}}{{- .Values.mysql.existingSecret -}}{{- else -}}{{ printf "%s-db" (include "azerothcore.fullname" .) -}}{{- end -}}
-{{- else -}}
-{{- required "externalDatabase.existingSecret is required when mysql.enabled=false" .Values.externalDatabase.existingSecret -}}
-{{- end -}}
+{{- .Values.database.existingSecret | default (printf "%s-db" (include "azerothcore.fullname" .)) -}}
 {{- end -}}
 
-{{- define "azerothcore.db.secretKey" -}}
-{{- if .Values.mysql.enabled -}}{{- .Values.mysql.existingSecretPasswordKey -}}{{- else -}}{{- .Values.externalDatabase.existingSecretPasswordKey -}}{{- end -}}
+{{- define "azerothcore.db.adminUser" -}}
+{{- if .Values.mysql.enabled -}}root{{- else -}}{{- .Values.externalDatabase.adminUser -}}{{- end -}}
 {{- end -}}
 
-{{/*
-Environment shared by every AzerothCore component: DB connection strings.
-MYSQL_ROOT_PASSWORD must be declared before the AC_*_DATABASE_INFO vars that
-reference it via $(...) expansion.
-*/}}
-{{- define "azerothcore.dbEnv" -}}
-- name: MYSQL_ROOT_PASSWORD
+{{- define "azerothcore.db.adminPasswordKey" -}}
+{{- if .Values.mysql.enabled -}}root-password{{- else -}}admin-password{{- end -}}
+{{- end -}}
+
+{{/* $(DB_PASSWORD) expands only when DB_PASSWORD comes earlier in the env list. */}}
+{{- define "azerothcore.db.info" -}}
+{{- printf "%s;%s;%s;$(DB_PASSWORD);%s" (include "azerothcore.db.host" .ctx) (include "azerothcore.db.port" .ctx) .ctx.Values.database.user .name -}}
+{{- end -}}
+
+{{- define "azerothcore.db.env" -}}
+{{- $names := .ctx.Values.database.names -}}
+- name: DB_PASSWORD
   valueFrom:
     secretKeyRef:
-      name: {{ include "azerothcore.db.secretName" . }}
-      key: {{ include "azerothcore.db.secretKey" . }}
+      name: {{ include "azerothcore.db.secretName" .ctx }}
+      key: password
 - name: AC_LOGIN_DATABASE_INFO
-  value: "{{ include "azerothcore.db.host" . }};{{ include "azerothcore.db.port" . }};{{ include "azerothcore.db.user" . }};$(MYSQL_ROOT_PASSWORD);acore_auth"
-{{- end -}}
-
-{{- define "azerothcore.dbEnvWorld" -}}
-- name: AC_CHARACTER_DATABASE_INFO
-  value: "{{ include "azerothcore.db.host" . }};{{ include "azerothcore.db.port" . }};{{ include "azerothcore.db.user" . }};$(MYSQL_ROOT_PASSWORD);acore_characters"
+  value: {{ include "azerothcore.db.info" (dict "ctx" .ctx "name" $names.auth) | quote }}
+{{- if .world }}
 - name: AC_WORLD_DATABASE_INFO
-  value: "{{ include "azerothcore.db.host" . }};{{ include "azerothcore.db.port" . }};{{ include "azerothcore.db.user" . }};$(MYSQL_ROOT_PASSWORD);acore_world"
-{{/* Only the playerbots flavor reads this variable. Vanilla ignores unknown AC_* variables. */}}
+  value: {{ include "azerothcore.db.info" (dict "ctx" .ctx "name" $names.world) | quote }}
+- name: AC_CHARACTER_DATABASE_INFO
+  value: {{ include "azerothcore.db.info" (dict "ctx" .ctx "name" $names.characters) | quote }}
+{{- if eq .ctx.Values.flavor "playerbots" }}
 - name: AC_PLAYERBOTS_DATABASE_INFO
-  value: "{{ include "azerothcore.db.host" . }};{{ include "azerothcore.db.port" . }};{{ include "azerothcore.db.user" . }};$(MYSQL_ROOT_PASSWORD);acore_playerbots"
+  value: {{ include "azerothcore.db.info" (dict "ctx" .ctx "name" $names.playerbots) | quote }}
+{{- end }}
+{{- end }}
 {{- end -}}
-
-{{/*
-======================================================================
-  Configuration → environment
-======================================================================
-*/}}
 
 {{/*
 Convert an AzerothCore conf key (verbatim from the .dist files) to the
@@ -161,49 +152,19 @@ Usage: include "azerothcore.configEnv" .Values.worldserver.config
 {{- end }}
 {{- end -}}
 
-{{/*
-======================================================================
-  Misc
-======================================================================
-*/}}
-
 {{- define "azerothcore.serviceAccountName" -}}
 {{- printf "%s-wait" (include "azerothcore.fullname" .) -}}
 {{- end -}}
 
 {{- define "azerothcore.dataClaimName" -}}
-{{- if .Values.clientData.existingClaim -}}
-{{- .Values.clientData.existingClaim -}}
-{{- else -}}
-{{- printf "%s-client-data" (include "azerothcore.fullname" .) -}}
-{{- end -}}
+{{- .Values.clientData.existingClaim | default (printf "%s-client-data" (include "azerothcore.fullname" .)) -}}
 {{- end -}}
 
-{{/* Job names carry the release revision: Jobs are immutable, so upgrades
-must create new ones. */}}
+{{/* Jobs are immutable, so each release revision needs new Job names. */}}
 {{- define "azerothcore.dbInitJobName" -}}
-{{- printf "%s-db-init-r%d" (include "azerothcore.fullname" .) .Release.Revision -}}
+{{- printf "%s-db-init-r%d" (include "azerothcore.fullname" .) (.Release.Revision | int) -}}
 {{- end -}}
 
 {{- define "azerothcore.clientDataJobName" -}}
-{{- printf "%s-client-data-r%d" (include "azerothcore.fullname" .) .Release.Revision -}}
-{{- end -}}
-
-{{/*
-Render an image map {registry, repository, tag, digest} to a reference.
-No flavor rewriting — for non-AzerothCore images (mysql, kubectl, ...).
-Usage: include "azerothcore.renderImage" .Values.mysql.image
-*/}}
-{{- define "azerothcore.renderImage" -}}
-{{- $registry := .registry | default "docker.io" -}}
-{{- $tag := .tag | default "latest" -}}
-{{- if .digest -}}
-{{- printf "%s/%s:%s@%s" $registry .repository $tag .digest -}}
-{{- else -}}
-{{- printf "%s/%s:%s" $registry .repository $tag -}}
-{{- end -}}
-{{- end -}}
-
-{{- define "azerothcore.kubectlImage" -}}
-{{- include "azerothcore.renderImage" .Values.images.kubectl -}}
+{{- printf "%s-client-data-r%d" (include "azerothcore.fullname" .) (.Release.Revision | int) -}}
 {{- end -}}
