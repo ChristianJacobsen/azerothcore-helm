@@ -1,76 +1,164 @@
 name: chart-ci
 
 on:
+  workflow_dispatch:
   push:
     branches: [main]
     paths: ["charts/**", "build/**", ".github/workflows/chart-ci.yaml"]
   pull_request:
     paths: ["charts/**", "build/**", ".github/workflows/chart-ci.yaml"]
 
+permissions:
+  contents: read
+
+env:
+  CHART: charts/azerothcore
+  # The chart fails to render without images.
+  IMAGE_ARGS: >-
+    --set images.vanilla.worldserver.tag=test
+    --set images.vanilla.authserver.tag=test
+    --set images.vanilla.dbImport.tag=test
+    --set images.vanilla.clientData.tag=test
+    --set images.playerbots.worldserver.tag=test
+    --set images.playerbots.authserver.tag=test
+    --set images.playerbots.dbImport.tag=test
+    --set images.playerbots.clientData.tag=test
+
 jobs:
   lint:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: azure/setup-helm@v4
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
 
-      - name: helm lint (default values)
-        run: helm lint charts/azerothcore
-
-      - name: helm lint (playerbots flavor)
-        run: helm lint charts/azerothcore --set flavor=playerbots --set flavorRegistry=ghcr.io/example
-
-      - name: helm lint (external database)
-        run: >
-          helm lint charts/azerothcore
-          --set mysql.enabled=false
-          --set externalDatabase.host=db.example.com
-          --set externalDatabase.existingSecret=db-creds
-
-      - name: render must contain converted AC_* env vars
+      - name: helm lint
         run: |
           set -euo pipefail
-          rendered="$(helm template ac charts/azerothcore \
-            --set 'worldserver.config.Rate\.XP\.Kill'=3 \
-            --set 'authserver.config.WrongPass\.MaxCount'=5)"
-          grep -q "AC_RATE_XP_KILL" <<< "$rendered"
-          grep -q "AC_WRONG_PASS_MAX_COUNT" <<< "$rendered"
+          helm lint "$CHART"
+          helm lint "$CHART" $IMAGE_ARGS
+          helm lint "$CHART" $IMAGE_ARGS --set flavor=playerbots
+          helm lint "$CHART" $IMAGE_ARGS --set mysql.enabled=false \
+            --set externalDatabase.host=db.example.com --set database.existingSecret=db-creds
+          helm lint "$CHART" $IMAGE_ARGS --set clientData.source=none --set dbInit.enabled=false
+          helm lint "$CHART" $IMAGE_ARGS --set worldserver.soap.enabled=true --set worldserver.remoteAccess.enabled=true \
+            --set 'dbInit.accounts[0].username=admin' --set 'dbInit.accounts[0].password=secret'
 
-      - name: helm template (gateway api, both served versions)
+      - name: the flavor selects the images and the playerbots database
         run: |
           set -euo pipefail
-          helm template ac charts/azerothcore --set gateway.enabled=true \
-            --set 'gateway.parentRefs[0].name'=main \
-            --set 'gateway.parentRefs[0].namespace'=gateway-system \
-            --api-versions gateway.networking.k8s.io/v1alpha2 \
+          for flavor in vanilla playerbots; do
+            rendered="$(helm template t "$CHART" $IMAGE_ARGS --set flavor=$flavor)"
+            for img in worldserver authserver db-import client-data; do
+              grep -q "image: ghcr.io/christianjacobsen/azerothcore-$flavor-$img:test" <<< "$rendered"
+            done
+          done
+          rendered="$(helm template t "$CHART" $IMAGE_ARGS --set flavor=playerbots)"
+          grep -q 'name: AC_PLAYERBOTS_DATABASE_INFO' <<< "$rendered"
+          grep -A1 'name: AC_AI_PLAYERBOT_MAX_RANDOM_BOTS' <<< "$rendered" | grep -q '"50"'
+          rendered="$(helm template t "$CHART" $IMAGE_ARGS)"
+          if grep -qE 'name: (AC_PLAYERBOTS|AC_AI_PLAYERBOT|DB_PLAYERBOTS)' <<< "$rendered"; then
+            echo "flavor=vanilla renders playerbots settings" >&2
+            exit 1
+          fi
+
+      # The expected names are the ones that the core prints for these keys.
+      - name: config keys render as AzerothCore environment variables
+        run: |
+          set -euo pipefail
+          rendered="$(helm template t "$CHART" $IMAGE_ARGS \
+            --set 'worldserver.config.Rate\.XP\.Kill=3' \
+            --set 'worldserver.config.ALE\.RequireCPaths=x' \
+            --set 'worldserver.config.AiPlayerbot\.PremadeSpecName\.1\.0=y' \
+            --set 'worldserver.config.AllowTwoSide\.Interaction\.Calendar=true' \
+            --set 'worldserver.config.GridCleanUpDelay=3000000' \
+            --set 'authserver.config.WrongPass\.MaxCount=5')"
+          grep -A1 'name: AC_RATE_XP_KILL' <<< "$rendered" | grep -q '"3"'
+          grep -A1 'name: AC_ALE_REQUIRE_CPATHS' <<< "$rendered" | grep -q '"x"'
+          grep -A1 'name: AC_AI_PLAYERBOT_PREMADE_SPEC_NAME_1__0' <<< "$rendered" | grep -q '"y"'
+          grep -A1 'name: AC_ALLOW_TWO_SIDE_INTERACTION_CALENDAR' <<< "$rendered" | grep -q '"1"'
+          grep -A1 'name: AC_GRID_CLEAN_UP_DELAY' <<< "$rendered" | grep -q '"3000000"'
+          grep -A1 'name: AC_WRONG_PASS_MAX_COUNT' <<< "$rendered" | grep -q '"5"'
+          # The values of a values file arrive as float64.
+          printf 'worldserver:\n  config:\n    MaxPlayerLevel: 1000000\n' > /tmp/float.yaml
+          helm template t "$CHART" $IMAGE_ARGS -f /tmp/float.yaml \
+            | grep -A1 'name: AC_MAX_PLAYER_LEVEL' | grep -q '"1000000"'
+
+      - name: data volume and realm port
+        run: |
+          set -euo pipefail
+          rendered="$(helm template t "$CHART" $IMAGE_ARGS --set clientData.volume.nfs.server=nas --set clientData.volume.nfs.path=/data)"
+          if grep -q 'kind: PersistentVolumeClaim' <<< "$rendered"; then exit 1; fi
+          test "$(grep -c 'server: nas' <<< "$rendered")" = 2
+          rendered="$(helm template t "$CHART" $IMAGE_ARGS --set worldserver.service.type=NodePort --set worldserver.service.nodePort=30085)"
+          grep -A1 'name: REALM_PORT' <<< "$rendered" | grep -q '"30085"'
+
+      - name: gateway api renders the served TCPRoute version
+        run: |
+          set -euo pipefail
+          refs=(--set gateway.enabled=true
+            --set 'gateway.parentRefs.authserver[0].name=games' --set 'gateway.parentRefs.authserver[0].sectionName=auth'
+            --set 'gateway.parentRefs.worldserver[0].name=games' --set 'gateway.parentRefs.worldserver[0].sectionName=world')
+          helm template t "$CHART" $IMAGE_ARGS "${refs[@]}" \
+            --api-versions gateway.networking.k8s.io/v1/Gateway \
+            --api-versions gateway.networking.k8s.io/v1alpha2/TCPRoute \
             | grep -q "apiVersion: gateway.networking.k8s.io/v1alpha2"
-          helm template ac charts/azerothcore --set gateway.enabled=true \
-            --api-versions gateway.networking.k8s.io/v1 \
+          helm template t "$CHART" $IMAGE_ARGS "${refs[@]}" \
+            --api-versions gateway.networking.k8s.io/v1/TCPRoute \
             | grep -q "apiVersion: gateway.networking.k8s.io/v1"
 
-      - name: gateway without cluster CRDs must fail
+      - name: invalid values must fail
         run: |
-          if helm template ac charts/azerothcore --set gateway.enabled=true >/dev/null 2>&1; then
-            echo "expected template failure without TCPRoute in cluster capabilities" >&2
-            exit 1
-          fi
-
-      - name: playerbots flavor without registry must fail
-        run: |
-          if helm template ac charts/azerothcore --set flavor=playerbots >/dev/null 2>&1; then
-            echo "expected template failure without flavorRegistry" >&2
-            exit 1
-          fi
+          set -uo pipefail
+          expect_fail() {
+            if helm template t "$CHART" "$@" >/dev/null 2>&1; then
+              echo "expected a template failure: $*" >&2
+              exit 1
+            fi
+          }
+          # No images.
+          expect_fail
+          expect_fail --set flavor=playerbots
+          # An unknown flavor or client data source.
+          expect_fail $IMAGE_ARGS --set flavor=custom
+          expect_fail $IMAGE_ARGS --set clientData.source=extract
+          # Gateway without a TCPRoute API in the cluster, or without parentRefs.
+          expect_fail $IMAGE_ARGS --set gateway.enabled=true \
+            --set 'gateway.parentRefs.authserver[0].name=g' --set 'gateway.parentRefs.worldserver[0].name=g'
+          expect_fail $IMAGE_ARGS --set gateway.enabled=true --api-versions gateway.networking.k8s.io/v1/TCPRoute
+          # A ";" in the database password breaks the connection strings.
+          expect_fail $IMAGE_ARGS --set 'database.password=a;b'
+          # An account without a password.
+          expect_fail $IMAGE_ARGS --set 'dbInit.accounts[0].username=admin'
+          echo "all invalid values failed as expected"
 
       - name: kubeconform
         run: |
-          helm template ac charts/azerothcore | docker run --rm -i \
-            ghcr.io/yannh/kubeconform:v0.7.0 \
-            -summary -strict -ignore-missing-schemas -kubernetes-version 1.32.0
+          helm template t "$CHART" $IMAGE_ARGS --set flavor=playerbots \
+            --set worldserver.soap.enabled=true --set worldserver.remoteAccess.enabled=true \
+            --set 'dbInit.accounts[0].username=admin' --set 'dbInit.accounts[0].password=secret' \
+            | docker run --rm -i ghcr.io/yannh/kubeconform:v0.7.0 \
+              -summary -strict -ignore-missing-schemas -kubernetes-version 1.32.0
 
-  shellcheck:
+  scripts:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v5
-      - run: shellcheck build/build-images.sh
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: shellcheck
+        run: >
+          docker run --rm -v "$PWD:/mnt" -w /mnt koalaman/shellcheck:v0.11.0
+          build/build-images.sh charts/azerothcore/files/db-init.sh
+      - name: python scripts
+        run: |
+          set -euo pipefail
+          python3 charts/azerothcore/files/accounts.py --self-test
+          ACCOUNT_0_USERNAME=a ACCOUNT_0_PASSWORD=b ACCOUNT_0_GMLEVEL=3 python3 charts/azerothcore/files/accounts.py \
+            | grep -q "SELECT id, 3, -1 FROM account WHERE username = 'A'"
+          python3 -m py_compile charts/azerothcore/files/auth-check.py
+          cp charts/azerothcore/values.yaml /tmp/values.yaml
+          for flavor in vanilla playerbots; do
+            python3 build/pin-images.py --values /tmp/values.yaml --flavor $flavor --tag 20260101-abcdef0 \
+              --worldserver-digest "sha256:$(printf '%064d' 1)" --authserver-digest "sha256:$(printf '%064d' 2)" \
+              --dbImport-digest "sha256:$(printf '%064d' 3)" --clientData-digest "sha256:$(printf '%064d' 4)"
+          done
+          test "$(diff charts/azerothcore/values.yaml /tmp/values.yaml | grep -c '^>')" = 16
