@@ -49,43 +49,17 @@ app.kubernetes.io/instance: {{ .ctx.Release.Name }}
 app.kubernetes.io/component: {{ .component }}
 {{- end -}}
 
-{{/*
-======================================================================
-  Images
-======================================================================
-*/}}
-
-{{/*
-Resolve the image reference for a component.
-Flavor rewrite rule: when flavor != vanilla, every images.<component> entry
-that still points at the upstream "acore/" namespace is redirected to
-<flavorRegistry>/<image-name>:<flavor> (digest dropped). Explicitly
-overridden repositories are always used verbatim.
-Usage: include "azerothcore.image" (dict "ctx" . "component" "worldserver")
-*/}}
 {{- define "azerothcore.image" -}}
-{{- $ctx := .ctx -}}
-{{- $img := index $ctx.Values.images .component -}}
-{{- $flavor := $ctx.Values.flavor -}}
-{{- $registry := $img.registry | default "docker.io" -}}
-{{- $repository := $img.repository -}}
-{{- $tag := $img.tag | default "latest" -}}
-{{- $digest := $img.digest | default "" -}}
-{{- if and (ne $flavor "vanilla") (hasPrefix "acore/" $repository) -}}
-  {{- if not $ctx.Values.flavorRegistry -}}
-    {{- fail (printf "flavor=%q requires flavorRegistry (e.g. ghcr.io/myorg) or an explicit images.%s.repository override" $flavor .component) -}}
-  {{- end -}}
-  {{- $registry = regexFind "^[^/]+" $ctx.Values.flavorRegistry -}}
-  {{- $namespace := trimPrefix (printf "%s/" $registry) $ctx.Values.flavorRegistry -}}
-  {{- $repository = printf "%s/%s" $namespace (base $repository) -}}
-  {{- $tag = $flavor -}}
-  {{- $digest = "" -}}
+{{- $flavor := .ctx.Values.flavor -}}
+{{- $images := index .ctx.Values.images $flavor -}}
+{{- if or (not (has $flavor (list "vanilla" "playerbots"))) (not $images) -}}
+{{- fail "flavor must be vanilla or playerbots" -}}
 {{- end -}}
-{{- if $digest -}}
-{{- printf "%s/%s:%s@%s" $registry $repository $tag $digest -}}
-{{- else -}}
-{{- printf "%s/%s:%s" $registry $repository $tag -}}
+{{- $img := index $images .component -}}
+{{- if or (not $img.repository) (not $img.tag) -}}
+{{- fail (printf "images.%s.%s.repository and images.%s.%s.tag are required. Use a published tag of ghcr.io/christianjacobsen/azerothcore-%s-*, or build your own images with `FLAVOR=%s make images` and install with `-f build/images.generated.yaml`." $flavor .component $flavor .component $flavor $flavor) -}}
 {{- end -}}
+{{- include "azerothcore.renderImage" $img -}}
 {{- end -}}
 
 {{/*

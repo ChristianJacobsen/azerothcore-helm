@@ -1,51 +1,60 @@
-# -- Base image flavor.
-# vanilla    → upstream azerothcore/azerothcore-wotlk images, no mods (default).
-# playerbots → images built from mod-playerbots/azerothcore-wotlk @ Playerbot
-#              with mod-playerbots compiled in.
-# Non-vanilla flavors are built by this project's CI or by `make images`
-# (see build/ in the chart repository) and pulled from `flavorRegistry`.
-# Any images.* entry you override explicitly is always used verbatim,
-# regardless of flavor.
-#
-# Lua scripting (ALE, formerly mod-eluna) is built into modern AzerothCore
-# images: enable it via worldserver.config."ALE.Enabled": 1 and mount scripts
-# via worldserver.elunaScripts.existingClaim. No separate flavor needed.
+# -- The image set. vanilla: the AzerothCore core with mod-ale, like the
+# images of AzerothCore. playerbots: the mod-playerbots fork of the core with
+# mod-playerbots. It selects the images under images.<flavor>.
 flavor: vanilla
-
-# -- Registry INCLUDING namespace that hosts the non-vanilla flavor images,
-# e.g. "ghcr.io/myorg". Required when flavor != vanilla unless every
-# images.* entry is overridden.
-flavorRegistry: ""
 
 imagePullSecrets: []
 imagePullPolicy: IfNotPresent
 
+# The images workflow of this repository builds these images with the
+# Dockerfile of the core, and it pins its latest builds below through a pull
+# request.
 images:
-  # renovate: datasource=docker depName=acore/ac-wotlk-worldserver
-  worldserver:
-    registry: docker.io
-    repository: acore/ac-wotlk-worldserver
-    tag: 17.0.0-dev
-    digest: sha256:75c1e7124eca8a6c32afa6e5fbda9eceff55c5e3aec06ecd99771de544d0a745
-  # renovate: datasource=docker depName=acore/ac-wotlk-authserver
-  authserver:
-    registry: docker.io
-    repository: acore/ac-wotlk-authserver
-    tag: 17.0.0-dev
-    digest: sha256:549999fdb557231197ac14f614efc4776fb5cae15589a1c12410a734b322b62c
-  # renovate: datasource=docker depName=acore/ac-wotlk-db-import
-  dbImport:
-    registry: docker.io
-    repository: acore/ac-wotlk-db-import
-    tag: 17.0.0-dev
-    digest: sha256:fe879f3bdf47c6db45eebb474c3174dcff047726732d6778bacf77cd0a7b800c
-  # renovate: datasource=docker depName=acore/ac-wotlk-client-data
-  clientData:
-    registry: docker.io
-    repository: acore/ac-wotlk-client-data
-    tag: 17.0.0-dev
-    digest: sha256:752d8cb140b824e3c5732faa5231cf6317dce1f205878a87ebb5190c21aaac9e
-  # kubectl image used by the init containers that wait for Jobs.
+  vanilla:
+    worldserver:
+      registry: ghcr.io
+      repository: christianjacobsen/azerothcore-vanilla-worldserver
+      tag: ""
+      digest: ""
+    authserver:
+      registry: ghcr.io
+      repository: christianjacobsen/azerothcore-vanilla-authserver
+      tag: ""
+      digest: ""
+    # -- Must come from the same build as the servers, because the SQL
+    # updates follow the core revision.
+    dbImport:
+      registry: ghcr.io
+      repository: christianjacobsen/azerothcore-vanilla-db-import
+      tag: ""
+      digest: ""
+    clientData:
+      registry: ghcr.io
+      repository: christianjacobsen/azerothcore-vanilla-client-data
+      tag: ""
+      digest: ""
+  playerbots:
+    worldserver:
+      registry: ghcr.io
+      repository: christianjacobsen/azerothcore-playerbots-worldserver
+      tag: ""
+      digest: ""
+    authserver:
+      registry: ghcr.io
+      repository: christianjacobsen/azerothcore-playerbots-authserver
+      tag: ""
+      digest: ""
+    dbImport:
+      registry: ghcr.io
+      repository: christianjacobsen/azerothcore-playerbots-db-import
+      tag: ""
+      digest: ""
+    clientData:
+      registry: ghcr.io
+      repository: christianjacobsen/azerothcore-playerbots-client-data
+      tag: ""
+      digest: ""
+  # -- kubectl, for the init containers that wait for the Jobs.
   # renovate: datasource=docker depName=alpine/k8s
   kubectl:
     registry: docker.io
