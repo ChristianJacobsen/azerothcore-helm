@@ -98,7 +98,16 @@ spec:
         - name: worldserver
           image: {{ include "azerothcore.image" (dict "ctx" . "component" "worldserver") }}
           imagePullPolicy: {{ .Values.imagePullPolicy }}
-          # Interactive AzerothCore console: `kubectl attach -it <pod> -c worldserver`
+          # The entrypoint of the image runs these. The core reads only
+          # modules/<name>.conf, and the image ships <name>.conf.dist.
+          args:
+            - bash
+            - -c
+            - >-
+              for f in /azerothcore/env/dist/etc/modules/*.conf.dist;
+              do [ -e "$f" ] && cp "$f" "${f%.dist}"; done;
+              exec worldserver
+          # The worldserver console reads stdin: kubectl attach -it deploy/<release>-worldserver
           stdin: true
           tty: true
           env:
