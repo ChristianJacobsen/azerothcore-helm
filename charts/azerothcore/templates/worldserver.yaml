@@ -19,7 +19,8 @@
 {{- with .Values.worldserver.luaScripts -}}
 {{- $_ := set $defaults "ALE.ScriptPath" "/azerothcore/lua_scripts" -}}
 {{- end -}}
-{{- $config := merge (deepCopy .Values.worldserver.config) $defaults -}}
+{{- $bots := ternary .Values.playerbots.config dict (eq .Values.flavor "playerbots") -}}
+{{- $config := merge (deepCopy .Values.worldserver.config) (deepCopy $bots) $defaults -}}
 apiVersion: v1
 kind: Service
 metadata:

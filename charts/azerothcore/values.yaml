@@ -282,6 +282,15 @@ worldserver:
     # playerbots). 90 * 10s = 15 min budget.
     failureThreshold: 90
 
+playerbots:
+  # -- playerbots.conf keys for the playerbots flavor, rendered like
+  # worldserver.config, which wins on the same key. The chart lowers the
+  # random bot count from 500 to 50. Raise worldserver.resources for more
+  # bots.
+  config:
+    AiPlayerbot.MinRandomBots: 50
+    AiPlayerbot.MaxRandomBots: 50
+
 # -- Expose the game ports through Gateway API TCPRoutes. Requires the
 # experimental-channel Gateway API CRDs (TCPRoute) and a Gateway controller
 # that supports TCPRoute. Ingress cannot route the game protocols, because

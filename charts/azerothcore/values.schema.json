@@ -259,6 +259,22 @@
         }
       ]
     },
+    "playerbots": {
+      "type": "object",
+      "properties": {
+        "config": {
+          "type": "object",
+          "additionalProperties": {
+            "type": [
+              "string",
+              "integer",
+              "number",
+              "boolean"
+            ]
+          }
+        }
+      }
+    },
     "gateway": {
       "type": "object",
       "properties": {
