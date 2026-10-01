@@ -18,5 +18,7 @@ home: https://github.com/azerothcore/azerothcore-wotlk
 sources:
   - https://github.com/azerothcore/azerothcore-wotlk
   - https://github.com/mod-playerbots/mod-playerbots
+annotations:
+  artifacthub.io/license: GPL-2.0-or-later
 maintainers:
   - name: azerothcore-helm
