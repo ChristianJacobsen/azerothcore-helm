@@ -1,283 +1,345 @@
 # azerothcore-helm
 
-A Helm chart for [AzerothCore](https://www.azerothcore.org/), a World of
-Warcraft 3.3.5a (WotLK) private server. The chart offers selectable image
-flavors, including
-[mod-playerbots](https://github.com/mod-playerbots/mod-playerbots).
+A Helm chart for [AzerothCore](https://www.azerothcore.org/), a World of Warcraft server for Wrath of the Lich King (3.3.5a).
 
-One command to a running server:
+The chart runs MySQL, the authserver (the login server), and the worldserver. Two Jobs prepare the data: one creates the databases and applies the SQL updates, and one downloads the client data (the maps and game tables that the worldserver reads).
 
-```sh
-helm install ac oci://ghcr.io/<owner>/charts/azerothcore
-```
-
-~15 minutes later (mostly a one-off client-data download), MySQL, the auth
-server, and the world server run. The db-import job migrated the databases
-and registered the realm.
-
-## Why the chart never compiles anything
-
-AzerothCore C++ modules are compile-time. The build links them statically
-into the server binaries. You choose the module list when you configure the
-core. There is no plugin mechanism. The "dynamic" module mode is link-time
-dynamic linking (experimental), not runtime loading.
-
-This project separates the two concerns:
-
-| Concern | Tool |
-| --- | --- |
-| Deploy (databases, migrations, client data, services, configuration) | the Helm chart in this repo |
-| Build (select and compile mods into images) | the upstream Dockerfile, driven by `build/build-images.sh` locally or by CI |
-
-## Flavors
-
-| `flavor` | Base | Mods | Images |
-| --- | --- | --- | --- |
-| `vanilla` (default) | `azerothcore/azerothcore-wotlk` | none | upstream `docker.io/acore/ac-wotlk-*` (pinned) |
-| `playerbots` | `mod-playerbots/azerothcore-wotlk` @ `Playerbot` | mod-playerbots | `flavorRegistry` you point at (CI- or self-built) |
-| custom | your choice | your choice | built with `make images`, referenced via `-f build/images.generated.yaml` |
-
-Lua scripting (ALE, formerly mod-eluna) is built into modern AzerothCore
-cores. You can enable it at runtime without a rebuild:
-
-```yaml
-worldserver:
-  config:
-    ALE.Enabled: 1
-  elunaScripts:
-    existingClaim: my-lua-scripts-pvc   # mounted at .../env/dist/lua_scripts
-```
+This repository builds the images with the Dockerfile of the core, in two flavors. The vanilla flavor is the core with [mod-ale](https://github.com/azerothcore/mod-ale), the Lua engine, like the images of AzerothCore. The playerbots flavor is the [mod-playerbots](https://github.com/mod-playerbots/mod-playerbots) fork of the core.
 
 ## Quick start
 
-### Vanilla (zero builds)
+You need a Kubernetes cluster, Helm 3.8 or later, and a 3.3.5a game client.
 
-```sh
-helm install ac charts/azerothcore -n ac --create-namespace
-kubectl -n ac get pods -w
-```
+1. Write a values file. It tells the chart the flavor and which account to create.
 
-The first boot takes ~10–15 minutes (client-data download, SQL migrations,
-world load). This is normal. Later restarts take a few minutes.
+   ```yaml
+   # values.local.yaml
+   flavor: vanilla              # vanilla or playerbots
+   dbInit:
+     accounts:
+       - username: admin
+         password: change-me
+         gmlevel: 3
+   ```
 
-### Playerbots (zero builds, if images exist)
+2. Install the chart:
 
-```sh
-helm install ac charts/azerothcore -n ac --create-namespace \
-  --set flavor=playerbots \
-  --set flavorRegistry=ghcr.io/<your-org>
-```
+   ```sh
+   helm install azerothcore oci://ghcr.io/christianjacobsen/charts/azerothcore \
+     -n azerothcore --create-namespace -f values.local.yaml
+   kubectl -n azerothcore get pods -w
+   ```
 
-`flavorRegistry` must host `ac-wotlk-{worldserver,authserver,db-import}:playerbots`
-images. The CI of this repo publishes them (`.github/workflows/images.yaml`,
-weekly and on-demand, multi-arch), or you can build them locally (next
-section). If you select a non-vanilla flavor without a registry, the chart
-fails with a clear message.
+3. Wait for the two Jobs to complete. Then the worldserver starts.
 
-The playerbots flavor uses a fourth database, `acore_playerbots`. The
-worldserver creates and populates it on the first boot. The chart copies the
-module SQL data from the db-import image into a shared volume, because the
-worldserver image does not carry it.
+4. Make sure that the chart works:
 
-The module logs in 500 bots by default. Set `AiPlayerbot.MinRandomBots` and
-`AiPlayerbot.MaxRandomBots` in `worldserver.config` to change the count.
+   ```sh
+   helm test azerothcore -n azerothcore --logs
+   ```
 
-A worldserver with thousands of bots needs more memory than the defaults:
+   The test connects to both servers. If `dbInit.accounts` has an account, the test also logs in with it, and the realm must be online.
+
+5. In the client folder, set `realmlist.wtf` to the address of the authserver service. Then log in as `admin`.
+
+On a 10-core machine with a fast link, the first install took about 2 minutes. The world loads in seconds.
+
+The chart values pin the images that the CI of this repository publishes to `ghcr.io/christianjacobsen`. To build your own images, see [CONTRIBUTING.md](https://github.com/ChristianJacobsen/azerothcore-helm/blob/main/CONTRIBUTING.md).
+
+## Flavors
+
+The `flavor` value selects the images:
+
+| `flavor` | Core | Module |
+| --- | --- | --- |
+| `vanilla` (default) | [azerothcore-wotlk](https://github.com/azerothcore/azerothcore-wotlk) | mod-ale |
+| `playerbots` | [mod-playerbots/azerothcore-wotlk](https://github.com/mod-playerbots/azerothcore-wotlk), branch `Playerbot` | mod-playerbots |
+
+mod-playerbots needs changes to the core, so it works with the playerbots flavor only. The playerbots flavor has a fourth database, `acore_playerbots`. The worldserver fills it on the first start.
+
+### Other modules
+
+AzerothCore compiles its modules into the server binaries. For other modules from the [catalogue](https://www.azerothcore.org/catalogue.html), build your own images. List the modules in `build/mods.local.yaml`. Git ignores this file.
 
 ```yaml
-worldserver:
-  resources:
-    requests: { memory: 4Gi }
-    limits:   { memory: 8Gi }
-```
-
-### Custom catalogue mods (local build)
-
-Pick mods from the [catalogue](https://www.azerothcore.org/catalogue.html).
-The command `make catalogue` lists the most-starred mods. Then write
-`build/mods.yaml`:
-
-```yaml
-# build/mods.yaml
-flavor: playerbots   # or vanilla
+# build/mods.local.yaml
+flavor: playerbots          # vanilla or playerbots
 mods:
-  - https://github.com/azerothcore/mod-solocraft.git
-  - https://github.com/azerothcore/mod-autobalance.git@master
+  - https://github.com/azerothcore/mod-transmog
+  - https://github.com/azerothcore/mod-autobalance@master   # a branch, tag, or commit
 ```
+
+Then build the images and install the chart with the file that the build writes:
 
 ```sh
-make images                 # ~60–90 min first time; incremental after
-helm install ac charts/azerothcore -n ac --create-namespace \
-  -f build/images.generated.yaml -f your-values.yaml
+make images
+helm install azerothcore charts/azerothcore -n azerothcore --create-namespace \
+  -f build/images.generated.yaml -f values.local.yaml
 ```
 
-The script clones the correct base. It selects the Playerbot fork when the
-mod list needs it, and it refuses mod-playerbots on vanilla, because that
-combination cannot work. It compiles with the upstream Dockerfile via
-`docker buildx`, loads the images into your local Docker, and writes
-`build/images.generated.yaml` for Helm. Build caches live in the buildkit of
-dockerd. If you change the mod list later, the build recompiles only what
-changed. The script deletes modules that you removed from the file, because
-the compiler takes every module it finds in the source tree.
+`make catalogue` lists the modules with the most stars. For the build variables, see [CONTRIBUTING.md](https://github.com/ChristianJacobsen/azerothcore-helm/blob/main/CONTRIBUTING.md).
 
-Environment overrides: `REGISTRY`, `TAG`, `PUSH=1`,
-`PLATFORMS=linux/amd64,linux/arm64` (multi-arch requires `PUSH=1`).
+## What the chart deploys
 
-> mod-playerbots requires the fork. It cannot run on a vanilla core.
-> The build script and the chart both refuse that combination.
+| Component | Kind | Purpose |
+| --- | --- | --- |
+| `mysql` | StatefulSet | MySQL 8.4 with the AzerothCore databases (optional, see [Database](#database)) |
+| `db-init` | Job | Creates the databases, applies the SQL updates, sets the realm, and creates accounts |
+| `client-data` | Job | Downloads the client data into the data volume |
+| `authserver` | Deployment and Service | The login server (port 3724) |
+| `worldserver` | Deployment and Service | The world server (port 8085) |
 
-## Connecting a game client
+The server pods wait until the Jobs of their release revision are complete.
 
-1. Get the service addresses:
-   ```sh
-   kubectl -n ac get svc ac-azerothcore-authserver ac-azerothcore-worldserver
-   ```
-2. Point the `realmlist.wtf` of the client at the authserver address
-   (NodePort or LoadBalancer).
-3. The realm address stored in the database must be the address that clients
-   use to reach the worldserver. The default is `127.0.0.1` (correct when you
-   play on the same machine). For LAN or WAN players:
-   ```sh
-   helm upgrade ac charts/azerothcore -n ac --reuse-values \
-     --set dbInit.realm.address=<your LAN or WAN IP>
-   ```
+## Client data
 
-### Creating your first (GM) account
+The worldserver needs four kinds of data from the game client: dbc files (game tables), maps, vmaps (models for line of sight), and mmaps (navigation meshes for path finding). The client-data Job downloads the release that the core expects from [wowgaming/client-data](https://github.com/wowgaming/client-data). The download is 1.1 GB, and it unpacks to 3.1 GB. If the data volume holds that release already, the Job completes in seconds.
 
-The worldserver runs an interactive console. SOAP cannot create the first
-account, because SOAP authentication itself requires a GM account. Use the
-console instead:
+The `clientData.source` value selects what the Job does:
+
+| `source` | What the Job does |
+| --- | --- |
+| `download` (default) | Downloads and unpacks the client data |
+| `none` | No Job. The data volume holds the data already, for example data that you extracted from your own client |
+
+The chart selects the data volume in this order:
+
+1. `clientData.volume`: any Kubernetes volume source, for example NFS.
+2. `clientData.existingClaim`: a PVC that you manage.
+3. A PVC that the chart creates from `clientData.storage` (20 GiB, ReadWriteOnce, the default storage class).
+
+## Database
+
+By default, the chart deploys MySQL 8.4 with a 10 GiB volume. It generates the root password and the password of the `acore` user, and it keeps both in a Secret.
+
+To use your own MySQL or MariaDB server:
+
+```yaml
+mysql:
+  enabled: false
+externalDatabase:
+  host: mysql.example.com
+  port: 3306
+  adminUser: root          # optional, see below
+database:
+  user: acore
+  existingSecret: azerothcore-db   # keys: password, admin-password
+```
+
+If you set `adminUser`, the db-init Job creates the databases and the `acore` user, and it grants the access. If you do not set it, the databases must exist, and `database.user` must be able to create tables in them. The databases are `acore_auth`, `acore_world`, `acore_characters`, and for the playerbots flavor `acore_playerbots`. `database.names` changes the names.
+
+Do not use `;` in the password. AzerothCore uses it to separate the fields of its connection strings.
+
+The bundled MySQL runs with a few extra arguments, and `mysql.extraArgs` in `values.yaml` gives the reasons. Only MySQL 8.4 is tested.
+
+### What the db-init Job does
+
+The db-init Job runs on every install and upgrade, and it is safe to run many times. It creates the databases and the database user. Then it runs dbimport, a tool of the core. dbimport fills empty databases and applies the SQL updates of the core and the modules that a database does not have yet. Last, the Job sets the realm in the realm list and creates your accounts.
+
+## Accounts
+
+The base SQL of AzerothCore contains no accounts. The Job creates the accounts in `dbInit.accounts`:
+
+```yaml
+dbInit:
+  accounts:
+    - username: admin
+      password: change-me       # stored in a Secret by the chart
+      gmlevel: 3                # 0 player, 1 moderator, 2 game master, 3 administrator
+    - username: friend
+      existingSecret: my-accounts
+      passwordKey: friend-password
+```
+
+If an account does not exist, the Job creates it. The Job never changes the password of an existing account, because players can change their password in the game. It sets `gmlevel` for all realms on every run. Names have 17 characters at most, passwords have 16 at most, and neither is case-sensitive.
+
+You can also use the worldserver console:
 
 ```sh
-kubectl -n ac attach -it deploy/ac-azerothcore-worldserver -c worldserver
-AC> account create <user> <password>
-AC> account set gmlevel <user> 3 -1
-AC> account set addon <user> 2
-# detach with ctrl-p ctrl-q  (NOT ctrl-c: it kills the worldserver)
+kubectl -n azerothcore attach -it deploy/azerothcore-worldserver -c worldserver
+account create <user> <password>
+account set gmlevel <user> 3 -1
 ```
+
+To detach, press ctrl-p ctrl-q. Do not press ctrl-c, because it stops the worldserver.
+
+Warning: do not type passwords in the attached console. The console echoes your input, and the container log keeps it. Use `dbInit.accounts`, or the remote consoles (see [Remote consoles](#remote-consoles)).
 
 ## Configuration
 
-You can set any key from `worldserver.conf.dist` or `authserver.conf.dist`
-verbatim, including module configuration keys. The chart converts each key to
-the `AC_*` environment variable that the core reads natively:
+You can set any key from `worldserver.conf.dist` and the module configuration files (`worldserver.config`), and from `authserver.conf.dist` (`authserver.config`). Use the key exactly as the file writes it:
 
 ```yaml
 worldserver:
   config:
     Rate.XP.Kill: 3
     AllowTwoSide.Interaction.Calendar: 1
-    MaxPlayerLevel: 80
 authserver:
   config:
     WrongPass.MaxCount: 5
 ```
 
-(`Rate.XP.Kill` becomes `AC_RATE_XP_KILL`. Use `1` and `0`, not `true` and
-`false`.)
+The chart renders each key as the environment variable that the core reads, for example `AC_RATE_XP_KILL`. It renders `true` and `false` as 1 and 0. The chart sets the database connections, the data folder, the ports, and the remote consoles. For environment variables without a configuration key, use `worldserver.extraEnv` and `authserver.extraEnv`.
 
-Use `worldserver.extraEnv` and `authserver.extraEnv` for environment variables
-that have no configuration key.
+### Playerbots
 
-### Storage
+```yaml
+flavor: playerbots
+playerbots:
+  config:
+    AiPlayerbot.MinRandomBots: 100
+    AiPlayerbot.MaxRandomBots: 100
+worldserver:
+  resources:
+    limits:
+      memory: 8Gi
+```
 
-- MySQL: a bundled `mysql:8.4` StatefulSet with an 8 Gi PVC. To use your own
-  server, set `mysql.enabled=false` and configure `externalDatabase`.
-- Client data: a 20 Gi PVC, populated once by a download Job
-  (`helm.sh/resource-policy: keep`, so it survives `helm uninstall`).
-  To use your own PVC, set `clientData.existingClaim`.
-  To skip the download, set `clientData.download=false`.
+The chart lowers the number of random bots from 500 to 50. More bots need more memory for the worldserver. With 50 bots, the worldserver used about 3.9 GiB, and the default limit is 6 GiB.
 
-Both default to `ReadWriteOnce` and the default StorageClass of the cluster.
-This works for single-node clusters. For multi-node clusters, use
-`existingClaim` with a `ReadWriteMany` volume.
+### Lua scripts
 
-### Exposing the game ports (Ingress? Gateway API?)
+The vanilla images include mod-ale. To load Lua scripts, put them in a ConfigMap or another volume, and set `worldserver.luaScripts`:
 
-The auth (3724) and world (8085) protocols are raw TCP, not HTTP. Ingress is
-HTTP-only and cannot route them, so the chart does not offer an Ingress. Do
-not expose the SOAP port through an Ingress either.
+```sh
+kubectl -n azerothcore create configmap lua-scripts --from-file=scripts/
+```
 
-Options:
+```yaml
+worldserver:
+  luaScripts:
+    configMap:
+      name: lua-scripts
+```
 
-1. NodePort (default): works everywhere and needs nothing extra.
-2. LoadBalancer: set `*.service.type=LoadBalancer` on cloud clusters.
-3. Gateway API TCPRoute: set `gateway.enabled=true` and `gateway.parentRefs`.
-   A Gateway-capable controller is a common day-one install, so this is often
-   the best option. Your controller must route raw TCP:
+The chart points `ALE.ScriptPath` at the volume. After you change the scripts, restart the worldserver.
 
-   | Controller | TCPRoute | Notes |
-   | --- | --- | --- |
-   | NGINX Gateway Fabric | Yes | full support in v2.x (a different product from ingress-nginx) |
-   | Envoy Gateway | Yes | experimental-channel CRDs |
-   | Kong Gateway | Yes | |
-   | Traefik v3 | Yes | needs `providers.kubernetesGateway.experimentalChannel: true` and experimental-channel CRDs, or its Gateway provider does not start |
-   | ingress-nginx | No | no Gateway API at all. Use its `tcp-services` ConfigMap instead |
-   | Caddy ingress | No | HTTP only |
+### Remote consoles
 
-   TCPRoute itself is experimental-channel (`v1alpha2`) in the upstream
-   Gateway API. Some controllers also serve it at `v1`. The chart renders the
-   version that your cluster serves. If the cluster serves neither version,
-   the chart fails with a clear message. If you enable the gateway, point
-   `dbInit.realm.address` at the external address of the Gateway and switch
-   the services back to `ClusterIP`.
+The worldserver has two remote consoles: SOAP (`worldserver.soap.enabled`) and a telnet console (`worldserver.remoteAccess.enabled`). The chart exposes them only inside the cluster, on the Service `<release>-worldserver-admin`. Both need an account with gmlevel 3:
 
-### Apple Silicon / arm64 note
+```sh
+kubectl -n azerothcore port-forward svc/azerothcore-worldserver-admin 3443:3443
+telnet 127.0.0.1 3443     # log in with the GM account, then: account create <user> <password>
+```
 
-Upstream `acore/*` images are amd64-only. On arm64 machines you have two
-options:
+## Connecting a game client
 
-- Pull the images for the amd64 platform before you install:
-  `docker pull --platform linux/amd64 <image>`. On OrbStack k3s and Docker
-  Desktop Kubernetes, the cluster shares the Docker image store, and the
-  images run under emulation.
-- Build native arm64 images with `make images`. The default platform is the
-  platform of the host, so `FLAVOR=vanilla` with no mods gives a native
-  vanilla build.
+The game protocols are raw TCP. Ingress routes HTTP only, so the chart does not offer an Ingress.
 
-The `playerbots` flavor images from CI are multi-arch (amd64 and arm64).
+The client connects to two addresses:
+
+1. The address in `realmlist.wtf`, which is the authserver service. The client uses port 3724.
+2. The realm address and port from the realm list, which is the worldserver service. `dbInit.realm.address` and `dbInit.realm.port` set them.
+
+Both Services are of type LoadBalancer by default, so they listen on the standard ports. On clusters without a load balancer, use NodePort services with fixed ports:
+
+```yaml
+worldserver:
+  service:
+    type: NodePort
+    nodePort: 30085
+dbInit:
+  realm:
+    address: 192.168.1.20    # a node address that the clients can reach
+```
+
+If `dbInit.realm.port` is empty, the chart uses the `nodePort` of the worldserver service (for NodePort) or its port. Clients expect the auth port 3724, so give the authserver port 3724 on the address in `realmlist.wtf`. Every upgrade restarts the authserver, so a new realm address takes effect at once.
+
+To test both addresses without a game client, run the login test on your machine with Python 3:
+
+```sh
+python3 charts/azerothcore/files/auth-check.py --host <authserver address> \
+  --user admin --password change-me --check-world
+```
+
+### Gateway API
+
+A Gateway controller that supports TCPRoute can route the two ports. TCPRoute is in the experimental channel of the Gateway API, so the cluster needs the experimental CRDs. A TCP listener cannot tell two routes apart, so each game port needs its own listener on the Gateway:
+
+```yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: games
+  namespace: gateway-system
+spec:
+  gatewayClassName: <your gateway class>
+  listeners:
+    - name: wow-auth
+      protocol: TCP
+      port: 3724
+      allowedRoutes:
+        namespaces:
+          from: All
+    - name: wow-world
+      protocol: TCP
+      port: 8085
+      allowedRoutes:
+        namespaces:
+          from: All
+```
+
+The chart values attach one TCPRoute to each listener:
+
+```yaml
+gateway:
+  enabled: true
+  parentRefs:
+    authserver:
+      - name: games
+        namespace: gateway-system
+        sectionName: wow-auth     # a TCP listener on port 3724
+    worldserver:
+      - name: games
+        namespace: gateway-system
+        sectionName: wow-world    # a TCP listener on port 8085
+authserver:
+  service:
+    type: ClusterIP
+worldserver:
+  service:
+    type: ClusterIP
+dbInit:
+  realm:
+    address: <Gateway address>
+```
 
 ## Upgrades
 
-`helm upgrade` re-runs the db-import Job (Jobs are named per release revision
-to work around Job immutability), so the SQL migrations track the image
-version. The client-data Job re-runs too and is a quick no-op unless the data
-version changed.
+`helm upgrade` runs both Jobs again. The db-init Job applies the new SQL updates. The client-data Job finds the data release on the volume and completes in seconds. Every upgrade restarts both servers.
 
-## Image version policy
-
-The file `values.yaml` pins every image by tag, and the upstream images also
-by digest. Renovate (docker datasource on the `# renovate:` annotations) and
-the chart releases handle the bumps.
-
-## Repository layout
-
-```
-charts/azerothcore/     the Helm chart
-build/                  mod selection + image build tool (mods.yaml, build-images.sh)
-.github/workflows/      images → GHCR (weekly), chart CI, nightly kind e2e, chart release (OCI)
-Makefile                lint / template / validate / images / catalogue
-```
-
-## Development
+## Uninstall
 
 ```sh
-make lint          # helm lint
-make validate      # helm template | kubectl apply --dry-run=server (needs a cluster)
-make catalogue     # browse top catalogue mods
-helm test ac -n ac # TCP connectivity test against a running release
+helm uninstall azerothcore -n azerothcore
 ```
 
-CI runs lint, template checks, kubeconform, and shellcheck on each pull
-request. It runs a full kind install every night and builds the playerbots
-flavor images every week.
+Helm keeps three things: the MySQL volume (`data-azerothcore-mysql-0`), the data volume (`azerothcore-client-data`), and the database Secret (`azerothcore-db`). A reinstall with the same release name uses them again. To delete everything, delete them by hand:
 
-## Known limitations (by design)
+```sh
+kubectl -n azerothcore delete pvc data-azerothcore-mysql-0 azerothcore-client-data
+kubectl -n azerothcore delete secret azerothcore-db
+```
 
-- One realm per release. Single-replica servers.
-- No automated account creation. SOAP cannot create the first account, by the
-  design of AzerothCore (see above).
-- C++ mod changes always require an image rebuild. Only Lua scripts and
-  configuration are adjustable at runtime.
-- No built-in backup CronJob yet. Use `mysqldump` against the MySQL pod (see
-  the AzerothCore backup docs).
+## Signatures
+
+Each chart version and image carries a keyless cosign signature from this repository. To make sure that a chart comes from here, run:
+
+```sh
+cosign verify ghcr.io/christianjacobsen/charts/azerothcore:<version> \
+  --certificate-identity-regexp '^https://github\.com/ChristianJacobsen/azerothcore-helm/\.github/workflows/' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+```
+
+The same command works for the images.
+
+## Limits
+
+- One realm per release, and one replica of each server.
+- The chart has no backup job yet. Use `mysqldump` against the MySQL pod.
+- The data volume uses ReadWriteOnce by default. That works on one node. On clusters with more nodes, use a ReadWriteMany volume through `clientData.existingClaim`, or keep the Job and the worldserver on one node.
+
+## License
+
+The chart uses the GPL-2.0-or-later license, the same as AzerothCore. See [LICENSE](https://github.com/ChristianJacobsen/azerothcore-helm/blob/main/LICENSE).
