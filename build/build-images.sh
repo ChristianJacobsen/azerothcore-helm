@@ -127,6 +127,22 @@ for m in $MODS; do
   fi
 done
 
+# Prune modules that are no longer listed. git reset --hard keeps untracked
+# directories, and CMake compiles every module that it finds here.
+for dir in "$CTX"/modules/*/; do
+  [ -d "$dir" ] || continue
+  base="$(basename "$dir")"
+  keep=0
+  for m in $MODS; do
+    url="${m%@*}"
+    if [ "$(basename "$url" .git)" = "$base" ]; then keep=1; break; fi
+  done
+  if [ "$keep" = "0" ]; then
+    echo "==> pruning stale module $base"
+    rm -rf "$dir"
+  fi
+done
+
 # ------------------------------------------------------------------ build
 OUTPUT="--load"
 [ "$PUSH" = "1" ] && OUTPUT="--push"

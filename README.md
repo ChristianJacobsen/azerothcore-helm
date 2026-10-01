@@ -117,7 +117,8 @@ combination cannot work. It compiles with the upstream Dockerfile via
 `docker buildx`, loads the images into your local Docker, and writes
 `build/images.generated.yaml` for Helm. Build caches live in the buildkit of
 dockerd. If you change the mod list later, the build recompiles only what
-changed.
+changed. The script deletes modules that you removed from the file, because
+the compiler takes every module it finds in the source tree.
 
 Environment overrides: `REGISTRY`, `TAG`, `PUSH=1`,
 `PLATFORMS=linux/amd64,linux/arm64` (multi-arch requires `PUSH=1`).
