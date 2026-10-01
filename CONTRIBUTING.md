@@ -94,10 +94,11 @@ The images workflow publishes the images with the tags `<date>-<core commit>` an
 
 ## Releases
 
-To release the chart, wait until the pin pull request merges. Then push a tag:
+To release the chart, wait until the pin pull request merges. Set `version` in `charts/azerothcore/Chart.yaml` to the new version. Commit the change to `main`. Then push the matching tag:
 
 ```sh
-git tag chart-v0.1.0 && git push --tags
+version="$(sed -n 's/^version: //p' charts/azerothcore/Chart.yaml)"
+git tag "chart-v$version" && git push origin "chart-v$version"
 ```
 
-The release workflow packages the README and the LICENSE with the chart, and it signs the chart with cosign. It also pushes `artifacthub-repo.yml` to the chart repository, so that Artifact Hub shows the chart as a verified publisher. It writes the images of both flavors to the `artifacthub.io/images` annotation, so that Artifact Hub scans them for vulnerabilities.
+The release workflow stops if the tag does not match `version`. Then it packages the README and the LICENSE with the chart, and it signs the chart with cosign. It also pushes `artifacthub-repo.yml` to the chart repository, so that Artifact Hub shows the chart as a verified publisher. It writes the images of both flavors to the `artifacthub.io/images` annotation, so that Artifact Hub scans them for vulnerabilities.

@@ -7,7 +7,7 @@ description: |-
   (the mod-playerbots fork of the core). Images with other modules build
   from the Dockerfile of the core.
 type: application
-version: 0.1.0
+version: 0.1.1
 keywords:
   - azerothcore
   - world-of-warcraft

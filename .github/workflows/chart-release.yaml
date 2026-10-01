@@ -21,6 +21,15 @@ jobs:
 
       - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
 
+      - name: the tag matches the chart version
+        run: |
+          set -euo pipefail
+          chart_version="$(yq .version charts/azerothcore/Chart.yaml)"
+          if [[ "$GITHUB_REF_NAME" != "chart-v$chart_version" ]]; then
+            echo "::error::the tag is $GITHUB_REF_NAME, but charts/azerothcore/Chart.yaml has version $chart_version"
+            exit 1
+          fi
+
       # Without the pin pull request of the images workflow, the chart has no
       # image tags and does not install.
       - name: the chart values pin the images
@@ -57,7 +66,7 @@ jobs:
           # Artifact Hub shows the README from the chart package, and the GPL
           # wants its text in each copy of the chart.
           cp README.md LICENSE charts/azerothcore/
-          helm package charts/azerothcore --version "$version"
+          helm package charts/azerothcore
           echo "$GITHUB_TOKEN" | helm registry login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
           helm push "azerothcore-$version.tgz" "oci://ghcr.io/$owner/charts" 2>&1 | tee push.log
           echo "ref=ghcr.io/$owner/charts/azerothcore@$(sed -n 's/^Digest: //p' push.log)" >> "$GITHUB_OUTPUT"
