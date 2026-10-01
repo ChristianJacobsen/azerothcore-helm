@@ -274,7 +274,8 @@ worldserver:
       cpu: 500m
       memory: 2Gi
     limits:
-      memory: 4Gi
+      # -- The playerbots flavor used about 3.9 GiB with 50 random bots.
+      memory: 6Gi
   # -- The worldserver saves all players on SIGTERM.
   terminationGracePeriodSeconds: 60
   # -- The rollout includes the wait for the client-data Job, which takes
