@@ -62,7 +62,7 @@ spec:
             - name: AC_LOGS_DIR
               value: /azerothcore/env/dist/logs
             {{- include "azerothcore.db.env" (dict "ctx" .) | nindent 12 }}
-            {{- include "azerothcore.configEnv" .Values.authserver.config | nindent 12 }}
+            {{- include "azerothcore.confEnv" .Values.authserver.config | trim | nindent 12 }}
             {{- with .Values.authserver.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}

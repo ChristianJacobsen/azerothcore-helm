@@ -128,27 +128,48 @@ imagePullSecrets:
 {{- end }}
 {{- end -}}
 
-{{/*
-Convert an AzerothCore conf key (verbatim from the .dist files) to the
-environment variable the core maps it to:
-prefix AC_, dots → underscores, camelCase → CAMEL_CASE.
-e.g. AllowTwoSide.Interaction.Calendar → AC_ALLOW_TWO_SIDE_INTERACTION_CALENDAR
-*/}}
-{{- define "azerothcore.confEnvName" -}}
-{{- $k := . -}}
-{{- $k = regexReplaceAll `\.` $k `_` -}}
-{{- $k = regexReplaceAll `([a-z0-9])([A-Z])` $k `${1}_${2}` -}}
-{{- printf "AC_%s" (upper $k) -}}
+{{/* IniKeyToEnvVarKey in src/common/Configuration/Config.cpp, character by character. */}}
+{{- define "azerothcore.envName" -}}
+{{- $chars := splitList "" . -}}
+{{- $last := sub (len $chars) 1 -}}
+{{- $out := "" -}}
+{{- range $i, $c := $chars -}}
+{{- if has $c (list " " "." "-") -}}
+{{- $out = print $out "_" -}}
+{{- else -}}
+{{- $out = print $out (upper $c) -}}
+{{- if lt $i $last -}}
+{{- $next := index $chars (add1 $i) -}}
+{{- $digit := regexMatch "^[0-9]$" $c -}}
+{{- $nextDigit := regexMatch "^[0-9]$" $next -}}
+{{- if or (and (not (regexMatch "^[A-Z]$" $c)) (regexMatch "^[A-Z]$" $next)) (and (not $digit) $nextDigit) (and $digit (not $nextDigit)) -}}
+{{- $out = print $out "_" -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- printf "AC_%s" $out -}}
 {{- end -}}
 
 {{/*
-Render a values `config` map as AC_* env vars.
-Usage: include "azerothcore.configEnv" .Values.worldserver.config
+Integer options cannot parse "true", so booleans become 1 and 0. Helm reads
+YAML numbers as float64, so whole numbers need a cast: 1000000 would render
+as 1e+06.
 */}}
-{{- define "azerothcore.configEnv" -}}
+{{- define "azerothcore.confValue" -}}
+{{- if kindIs "bool" . -}}
+{{- ternary "1" "0" . -}}
+{{- else if and (kindIs "float64" .) (eq (float64 (int64 .)) .) -}}
+{{- int64 . -}}
+{{- else -}}
+{{- toString . -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "azerothcore.confEnv" -}}
 {{- range $k, $v := . }}
-- name: {{ include "azerothcore.confEnvName" $k }}
-  value: {{ $v | quote }}
+- name: {{ include "azerothcore.envName" $k }}
+  value: {{ include "azerothcore.confValue" $v | quote }}
 {{- end }}
 {{- end -}}
 

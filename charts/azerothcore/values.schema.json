@@ -268,9 +268,9 @@
             "type": [
               "string",
               "integer",
-              "number"
-            ],
-            "description": "AzerothCore conf key (verbatim from .dist) \u2192 value. Use 1/0, not true/false."
+              "number",
+              "boolean"
+            ]
           }
         },
         "extraEnv": {
