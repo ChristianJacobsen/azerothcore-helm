@@ -152,6 +152,9 @@ reference it via $(...) expansion.
   value: "{{ include "azerothcore.db.host" . }};{{ include "azerothcore.db.port" . }};{{ include "azerothcore.db.user" . }};$(MYSQL_ROOT_PASSWORD);acore_characters"
 - name: AC_WORLD_DATABASE_INFO
   value: "{{ include "azerothcore.db.host" . }};{{ include "azerothcore.db.port" . }};{{ include "azerothcore.db.user" . }};$(MYSQL_ROOT_PASSWORD);acore_world"
+{{/* Only the playerbots flavor reads this variable. Vanilla ignores unknown AC_* variables. */}}
+- name: AC_PLAYERBOTS_DATABASE_INFO
+  value: "{{ include "azerothcore.db.host" . }};{{ include "azerothcore.db.port" . }};{{ include "azerothcore.db.user" . }};$(MYSQL_ROOT_PASSWORD);acore_playerbots"
 {{- end -}}
 
 {{/*
