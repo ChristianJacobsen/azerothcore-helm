@@ -1,34 +1,55 @@
-AzerothCore ({{ .Chart.Name }} {{ .Chart.Version }}), flavor: {{ .Values.flavor }}
+{{- $ns := .Release.Namespace -}}
+{{- $fullname := include "azerothcore.fullname" . -}}
+AzerothCore, {{ .Values.flavor }} flavor ({{ .Chart.Name }} {{ .Chart.Version }}), game client 3.3.5a (build 12340)
 
-FIRST BOOT takes a while (this is normal):
-  1. client-data download   ~10-15 min (one-off, ~5 GB)
-  2. db-import              a few minutes (SQL migrations)
-  3. worldserver world load 1-10 min (longer under emulation or with playerbots)
+THE FIRST INSTALL TAKES A FEW MINUTES:
+{{- if eq .Values.clientData.source "download" }}
+  1. client-data Job: downloads and unpacks the client data (about 1.1 GB)
+{{- else }}
+  1. client data: none (the data volume must hold dbc, maps, vmaps and mmaps already)
+{{- end }}
+{{- if .Values.dbInit.enabled }}
+  2. db-init Job: creates the databases and runs dbimport
+{{- end }}
+  3. the worldserver waits for both, then loads the world
 
-Watch progress:
-  kubectl -n {{ .Release.Namespace }} get pods -w
-  kubectl -n {{ .Release.Namespace }} logs -f job/{{ include "azerothcore.clientDataJobName" . }}
-  kubectl -n {{ .Release.Namespace }} logs -f job/{{ include "azerothcore.dbInitJobName" . }} -c dbimport
-
-CONNECT A GAME CLIENT (WotLK 3.3.5a):
-  Auth  port: kubectl -n {{ .Release.Namespace }} get svc {{ include "azerothcore.fullname" . }}-authserver
-  World port: kubectl -n {{ .Release.Namespace }} get svc {{ include "azerothcore.fullname" . }}-worldserver
-  Set realmlist.wtf to the authserver address. The realm address stored in the
-  database (dbInit.realm.address, currently "{{ .Values.dbInit.realm.address }}")
-  must be what clients use to reach the WORLDSERVER. If you play from another
-  machine, re-run helm upgrade with --set dbInit.realm.address=<LAN or WAN IP>.
-
-CREATE YOUR FIRST ACCOUNT (GM):
-  kubectl -n {{ .Release.Namespace }} attach -it deploy/{{ include "azerothcore.fullname" . }}-worldserver -c worldserver
-  AC> account create <user> <password>
-  AC> account set gmlevel <user> 3 -1
-  AC> account set addon <user> 2
-  Detach with ctrl-p ctrl-q. Do NOT press ctrl-c: it kills the worldserver.
-
-{{- if .Values.gateway.enabled }}
-GATEWAY API: the chart created a TCPRoute for each game port. Point
-dbInit.realm.address (and the client realmlist.wtf) at the external address of
-your Gateway, and set authserver.service.type=ClusterIP and
-worldserver.service.type=ClusterIP.
+Watch the progress:
+  kubectl -n {{ $ns }} get pods -w
+{{- if eq .Values.clientData.source "download" }}
+  kubectl -n {{ $ns }} logs -f job/{{ include "azerothcore.clientDataJobName" . }}
+{{- end }}
+{{- if .Values.dbInit.enabled }}
+  kubectl -n {{ $ns }} logs -f job/{{ include "azerothcore.dbInitJobName" . }}
 {{- end }}
 
+CONNECT A GAME CLIENT (3.3.5a):
+  kubectl -n {{ $ns }} get svc {{ $fullname }}-authserver {{ $fullname }}-worldserver
+  1. Set realmlist.wtf in the client folder: set realmlist <authserver address>
+  2. The realm list sends clients to {{ .Values.dbInit.realm.address }}:{{ include "azerothcore.realmPort" . }}
+     (dbInit.realm.address and dbInit.realm.port). That must be an address
+     where the client reaches the worldserver. For LAN or WAN players, run:
+     helm upgrade {{ .Release.Name }} <chart> -n {{ $ns }} --reuse-values --set dbInit.realm.address=<LAN or WAN IP>
+
+ACCOUNTS:
+{{- if .Values.dbInit.accounts }}
+  The db-init Job creates these accounts when they do not exist:
+{{- range .Values.dbInit.accounts }}
+    {{ .username | upper }} (gmlevel {{ .gmlevel | default 0 }})
+{{- end }}
+{{- else }}
+  No accounts configured (dbInit.accounts). Create one in the worldserver console:
+    kubectl -n {{ $ns }} attach -it deploy/{{ $fullname }}-worldserver -c worldserver
+    account create <user> <password>
+    account set gmlevel <user> 3 -1
+  Detach with ctrl-p ctrl-q. Do not press ctrl-c: it stops the worldserver.
+{{- end }}
+{{- if .Values.gateway.enabled }}
+
+GATEWAY API: the chart created one TCPRoute per game port. Point
+realmlist.wtf and dbInit.realm.address at the Gateway address. You can set
+authserver.service.type=ClusterIP and worldserver.service.type=ClusterIP.
+{{- end }}
+{{- if eq .Values.flavor "playerbots" }}
+
+PLAYERBOTS: {{ index .Values.worldserver.config "AiPlayerbot.MaxRandomBots" | default (index .Values.playerbots.config "AiPlayerbot.MaxRandomBots") | default "the default number of" }} random bots.
+{{- end }}

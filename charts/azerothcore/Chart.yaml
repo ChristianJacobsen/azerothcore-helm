@@ -1,19 +1,23 @@
 apiVersion: v2
 name: azerothcore
 description: |-
-  AzerothCore (WoW 3.3.5a private server) with selectable image flavors.
-  C++ mods are compile-time in AzerothCore; this chart deploys prebuilt images.
-  Use flavor=vanilla (upstream images), flavor=playerbots / playerbots-eluna
-  (images built from the mod-playerbots fork), or point images.* at images you
-  built yourself with the mods you want (see build/ in the chart repository).
+  AzerothCore World of Warcraft server for Wrath of the Lich King (3.3.5a):
+  authserver, worldserver, MySQL, database updates, accounts, and client
+  data. Two image flavors: vanilla (the core with mod-ale) and playerbots
+  (the mod-playerbots fork of the core). Images with other modules build
+  from the Dockerfile of the core.
 type: application
 version: 0.1.0
-appVersion: 17.0.0-dev
 keywords:
   - azerothcore
+  - world-of-warcraft
   - wow
   - wotlk
+  - wrath-of-the-lich-king
+  - private-server
+  - playerbots
   - game-server
+  - mmorpg
 home: https://github.com/ChristianJacobsen/azerothcore-helm
 sources:
   - https://github.com/ChristianJacobsen/azerothcore-helm

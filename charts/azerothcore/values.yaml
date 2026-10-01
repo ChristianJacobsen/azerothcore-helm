@@ -3,6 +3,11 @@
 # mod-playerbots. It selects the images under images.<flavor>.
 flavor: vanilla
 
+nameOverride: ""
+fullnameOverride: ""
+podAnnotations: {}
+podLabels: {}
+
 imagePullSecrets: []
 imagePullPolicy: IfNotPresent
 
@@ -212,12 +217,12 @@ dbInit:
       memory: 1Gi
 
 authserver:
-  # -- authserver.conf keys, verbatim from the .dist file, e.g.
-  # config:
-  #   WrongPass.MaxCount: 5
-  # Rendered as AC_* environment variables (the core maps them natively).
+  # -- authserver.conf keys, verbatim from authserver.conf.dist. The chart
+  # renders each key as the AC_<KEY> environment variable that the core
+  # reads. Example:
+  #   config:
+  #     WrongPass.MaxCount: 5
   config: {}
-  # -- Extra raw environment variables (appended after config).
   extraEnv: []
   service:
     # -- LoadBalancer exposes the standard game ports. Clients expect the
@@ -236,11 +241,12 @@ authserver:
       memory: 512Mi
 
 worldserver:
-  # -- worldserver.conf keys, verbatim from the .dist file, e.g.
-  # config:
-  #   Rate.XP.Kill: 3
-  #   AllowTwoSide.Interaction.Calendar: 1
-  # Module configuration keys work exactly the same way.
+  # -- worldserver.conf keys and the keys of the module configs, verbatim
+  # from their .conf.dist files. The chart renders each key as an AC_<KEY>
+  # environment variable. Example:
+  #   config:
+  #     Rate.XP.Kill: 3
+  #     AllowTwoSide.Interaction.Calendar: 1
   config: {}
   extraEnv: []
   soap:
@@ -266,8 +272,6 @@ worldserver:
   resources:
     requests:
       cpu: 500m
-      # -- Vanilla idles around 1.5-2 Gi. Playerbots with many bots needs
-      # 4-8 Gi. Raise both values there.
       memory: 2Gi
     limits:
       memory: 4Gi
@@ -278,8 +282,8 @@ worldserver:
   progressDeadlineSeconds: 3600
   startupProbe:
     periodSeconds: 10
-    # -- World load can take several minutes (longer under emulation or with
-    # playerbots). 90 * 10s = 15 min budget.
+    # -- The world loads in seconds. Slow nodes and emulated images take
+    # minutes.
     failureThreshold: 90
 
 playerbots:
@@ -312,8 +316,3 @@ gateway:
     authserver: []
     worldserver: []
   annotations: {}
-
-nameOverride: ""
-fullnameOverride: ""
-podAnnotations: {}
-podLabels: {}
