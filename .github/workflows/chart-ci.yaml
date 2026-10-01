@@ -117,8 +117,10 @@ jobs:
             fi
           }
           # No images.
-          expect_fail
-          expect_fail --set flavor=playerbots
+          for flavor in vanilla playerbots; do
+            expect_fail --set flavor=$flavor --set images.$flavor.worldserver.tag= --set images.$flavor.authserver.tag= \
+              --set images.$flavor.dbImport.tag= --set images.$flavor.clientData.tag=
+          done
           # An unknown flavor or client data source.
           expect_fail $IMAGE_ARGS --set flavor=custom
           expect_fail $IMAGE_ARGS --set clientData.source=extract
