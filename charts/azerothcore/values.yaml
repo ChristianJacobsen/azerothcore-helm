@@ -276,24 +276,26 @@ worldserver:
     # playerbots). 90 * 10s = 15 min budget.
     failureThreshold: 90
 
-# -- Expose the game ports via Gateway API TCPRoutes.
-# Requires Gateway API CRDs (TCPRoute is experimental-channel: v1alpha2. Some
-# controllers serve v1) and a TCPRoute-capable controller, for example NGINX
-# Gateway Fabric, Envoy Gateway, Kong, or Traefik with experimentalChannel
-# enabled.
-# The chart fails with a clear message when the cluster serves neither version.
-# NOTE: plain Ingress is NOT an option for AzerothCore, because the auth and
-# world protocols are raw TCP, and Ingress routes HTTP only. ingress-nginx
-# users: use its tcp-services ConfigMap instead (no Gateway API there).
+# -- Expose the game ports through Gateway API TCPRoutes. Requires the
+# experimental-channel Gateway API CRDs (TCPRoute) and a Gateway controller
+# that supports TCPRoute. Ingress cannot route the game protocols, because
+# they are raw TCP.
 gateway:
   enabled: false
-  # -- Gateways/listeners these routes attach to. Empty = attach to all
-  # compatible listeners of Gateways in the release namespace. Example:
-  # parentRefs:
-  #   - name: main
-  #     namespace: gateway-system
-  #     sectionName: tcp
-  parentRefs: []
+  # -- Gateways or listeners for the routes. Each game port needs a TCP
+  # listener on the Gateway. Example:
+  #   parentRefs:
+  #     authserver:
+  #       - name: games
+  #         namespace: gateway-system
+  #         sectionName: wow-auth
+  #     worldserver:
+  #       - name: games
+  #         namespace: gateway-system
+  #         sectionName: wow-world
+  parentRefs:
+    authserver: []
+    worldserver: []
   annotations: {}
 
 nameOverride: ""

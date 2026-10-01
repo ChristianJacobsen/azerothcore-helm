@@ -1,21 +1,20 @@
 {{- if .Values.gateway.enabled -}}
-{{/*
-TCPRoute lives in the Gateway API experimental channel (v1alpha2) as of
-Gateway API v1.6; some controllers additionally serve it at v1. Prefer v1
-when the cluster serves it, fall back to v1alpha2, fail clearly otherwise.
-*/}}
+{{/* Depending on the Gateway API release, the cluster serves TCPRoute at v1, v1alpha2, or both. */}}
 {{- $apiVersion := "" -}}
-{{- if .Capabilities.APIVersions.Has "gateway.networking.k8s.io/v1" -}}
+{{- if .Capabilities.APIVersions.Has "gateway.networking.k8s.io/v1/TCPRoute" -}}
   {{- $apiVersion = "gateway.networking.k8s.io/v1" -}}
-{{- else if .Capabilities.APIVersions.Has "gateway.networking.k8s.io/v1alpha2" -}}
+{{- else if .Capabilities.APIVersions.Has "gateway.networking.k8s.io/v1alpha2/TCPRoute" -}}
   {{- $apiVersion = "gateway.networking.k8s.io/v1alpha2" -}}
 {{- else -}}
-  {{- fail "gateway.enabled=true but this cluster serves no TCPRoute API (gateway.networking.k8s.io v1/v1alpha2). Install Gateway API CRDs (experimental channel) plus a TCPRoute-capable controller (NGINX Gateway Fabric, Envoy Gateway, Traefik with experimentalChannel, Kong), or set gateway.enabled=false and use NodePort/LoadBalancer services." -}}
+  {{- fail "gateway.enabled=true, but the cluster serves no TCPRoute API (gateway.networking.k8s.io v1 or v1alpha2). Install the experimental-channel Gateway API CRDs and a controller that routes TCP, or set gateway.enabled=false and use LoadBalancer or NodePort services." -}}
 {{- end -}}
 {{- range $route := list
-  (dict "name" "authserver" "port" .Values.authserver.service.port)
-  (dict "name" "worldserver" "port" .Values.worldserver.service.port)
+  (dict "name" "authserver" "port" $.Values.authserver.service.port "parentRefs" $.Values.gateway.parentRefs.authserver)
+  (dict "name" "worldserver" "port" $.Values.worldserver.service.port "parentRefs" $.Values.gateway.parentRefs.worldserver)
 }}
+{{- if not $route.parentRefs }}
+{{- fail (printf "gateway.parentRefs.%s is empty. Each game port needs its own TCP listener: set sectionName on every parentRef." $route.name) }}
+{{- end }}
 ---
 apiVersion: {{ $apiVersion }}
 kind: TCPRoute
@@ -29,10 +28,8 @@ metadata:
     {{- toYaml . | nindent 4 }}
   {{- end }}
 spec:
-  {{- with $.Values.gateway.parentRefs }}
   parentRefs:
-    {{- toYaml . | nindent 4 }}
-  {{- end }}
+    {{- toYaml $route.parentRefs | nindent 4 }}
   rules:
     - backendRefs:
         - name: {{ printf "%s-%s" (include "azerothcore.fullname" $) $route.name }}

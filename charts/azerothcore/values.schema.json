@@ -220,24 +220,50 @@
           "type": "boolean"
         },
         "parentRefs": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "properties": {
-              "name": {
-                "type": "string",
-                "minLength": 1
-              },
-              "namespace": {
-                "type": "string"
-              },
-              "sectionName": {
-                "type": "string"
+          "type": "object",
+          "properties": {
+            "authserver": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "namespace": {
+                    "type": "string"
+                  },
+                  "sectionName": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name"
+                ]
               }
             },
-            "required": [
-              "name"
-            ]
+            "worldserver": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "namespace": {
+                    "type": "string"
+                  },
+                  "sectionName": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name"
+                ]
+              }
+            }
           }
         },
         "annotations": {
