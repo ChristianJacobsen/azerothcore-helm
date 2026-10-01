@@ -19,46 +19,46 @@ images:
     worldserver:
       registry: ghcr.io
       repository: christianjacobsen/azerothcore-vanilla-worldserver
-      tag: ""
-      digest: ""
+      tag: "20261001-51c32b5"
+      digest: "sha256:b1975ca7ac2cee8a02ae28ac62da93ecf6ef02641477021af63d052ca0cdf351"
     authserver:
       registry: ghcr.io
       repository: christianjacobsen/azerothcore-vanilla-authserver
-      tag: ""
-      digest: ""
+      tag: "20261001-51c32b5"
+      digest: "sha256:7b1025a5de9989814d1b6a9d53ca10cf37018076e9c32a22e47b6f1db542214a"
     # -- Must come from the same build as the servers, because the SQL
     # updates follow the core revision.
     dbImport:
       registry: ghcr.io
       repository: christianjacobsen/azerothcore-vanilla-db-import
-      tag: ""
-      digest: ""
+      tag: "20261001-51c32b5"
+      digest: "sha256:604affb232857f7ef768ffbe7e97df74a6b280bcbd60d5e87d74355b4c9ba460"
     clientData:
       registry: ghcr.io
       repository: christianjacobsen/azerothcore-vanilla-client-data
-      tag: ""
-      digest: ""
+      tag: "20261001-51c32b5"
+      digest: "sha256:49114694b654cef0a4e67a863f3ed856361d277e65133ed6d1016d689085882c"
   playerbots:
     worldserver:
       registry: ghcr.io
       repository: christianjacobsen/azerothcore-playerbots-worldserver
-      tag: ""
-      digest: ""
+      tag: "20261001-7f12e89"
+      digest: "sha256:d83e31ac24c1b35ab4408dfab31396dd9066e7fa72946b95230a3ff1ced42e7b"
     authserver:
       registry: ghcr.io
       repository: christianjacobsen/azerothcore-playerbots-authserver
-      tag: ""
-      digest: ""
+      tag: "20261001-7f12e89"
+      digest: "sha256:31e98338d76c1c256beca924f4859af597a0671bea14e4c310912d936116648f"
     dbImport:
       registry: ghcr.io
       repository: christianjacobsen/azerothcore-playerbots-db-import
-      tag: ""
-      digest: ""
+      tag: "20261001-7f12e89"
+      digest: "sha256:01d355aa5fd9d884539e10038a42821cb5240c8fb5c19d90f72dad69e6fc4b64"
     clientData:
       registry: ghcr.io
       repository: christianjacobsen/azerothcore-playerbots-client-data
-      tag: ""
-      digest: ""
+      tag: "20261001-7f12e89"
+      digest: "sha256:912b915f0373900e8239e839a61ef6d33a913c325470aaebe21da5697d3f5f46"
   # -- kubectl, for the init containers that wait for the Jobs.
   # renovate: datasource=docker depName=alpine/k8s
   kubectl:
