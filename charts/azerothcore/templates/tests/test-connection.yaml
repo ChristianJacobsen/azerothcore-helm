@@ -1,24 +1,62 @@
+{{- $fullname := include "azerothcore.fullname" . -}}
+{{- $account := first (.Values.dbInit.accounts | default list) -}}
 apiVersion: v1
 kind: Pod
 metadata:
-  name: {{ printf "%s-connection-test" (include "azerothcore.fullname" .) }}
+  name: {{ printf "%s-connection-test" $fullname }}
   labels:
     {{- include "azerothcore.labels" . | nindent 4 }}
+    app.kubernetes.io/component: test
   annotations:
     "helm.sh/hook": test
     "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
 spec:
+  {{- include "azerothcore.pullSecrets" . | nindent 2 }}
   restartPolicy: Never
+  automountServiceAccountToken: false
   containers:
-    - name: tcp-check
-      # Test-only image; pinned tag.
-      image: busybox:1.37.0
+    - name: test
+      image: {{ include "azerothcore.renderImage" .Values.images.python }}
+      imagePullPolicy: {{ .Values.imagePullPolicy }}
       command:
-        - sh
+        - bash
         - -c
         - |
-          set -e
-          nc -z -w 5 {{ include "azerothcore.fullname" . }}-authserver 3724
-          echo "authserver:3724 reachable"
-          nc -z -w 5 {{ include "azerothcore.fullname" . }}-worldserver 8085
-          echo "worldserver:8085 reachable"
+          set -euo pipefail
+          connect_timeout_seconds=5
+          timeout "$connect_timeout_seconds" bash -c '</dev/tcp/{{ $fullname }}-authserver/{{ .Values.authserver.service.port }}'
+          echo "authserver {{ $fullname }}-authserver:{{ .Values.authserver.service.port }} reachable"
+          timeout "$connect_timeout_seconds" bash -c '</dev/tcp/{{ $fullname }}-worldserver/{{ .Values.worldserver.service.port }}'
+          echo "worldserver {{ $fullname }}-worldserver:{{ .Values.worldserver.service.port }} reachable"
+          {{- if $account }}
+          python3 /etc/azerothcore-helm/auth-check.py --host {{ $fullname }}-authserver --port {{ .Values.authserver.service.port }} --expect-online
+          {{- end }}
+      {{- if $account }}
+      env:
+        - name: AUTH_USERNAME
+          value: {{ $account.username | quote }}
+        - name: AUTH_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              {{- if $account.existingSecret }}
+              name: {{ $account.existingSecret }}
+              key: {{ $account.passwordKey | default "password" }}
+              {{- else }}
+              name: {{ printf "%s-accounts" $fullname }}
+              key: account-0
+              {{- end }}
+      {{- end }}
+      volumeMounts:
+        - name: scripts
+          mountPath: /etc/azerothcore-helm
+          readOnly: true
+      resources:
+        requests:
+          cpu: 10m
+          memory: 32Mi
+        limits:
+          memory: 128Mi
+  volumes:
+    - name: scripts
+      configMap:
+        name: {{ printf "%s-scripts" $fullname }}

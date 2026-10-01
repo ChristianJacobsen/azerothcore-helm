@@ -5,7 +5,7 @@ metadata:
   labels:
     {{- include "azerothcore.labels" . | nindent 4 }}
 data:
-  {{- range $file := list "db-init.sh" "accounts.py" }}
+  {{- range $file := list "db-init.sh" "accounts.py" "auth-check.py" }}
   {{ $file }}: |
     {{- $.Files.Get (printf "files/%s" $file) | nindent 4 }}
   {{- end }}
