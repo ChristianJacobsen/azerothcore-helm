@@ -1,0 +1,56 @@
+name: pin-merge
+
+# A rebase merge on GitHub creates a new, unsigned commit. A fast-forward
+# keeps the signed commit of the pin job.
+on:
+  workflow_run:
+    workflows: [chart-ci]
+    types: [completed]
+
+permissions: {}
+
+jobs:
+  fast-forward:
+    # A pull request from a fork has the fork as its head repository.
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.head_branch == 'chore/pin-images' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-24.04
+    # Only main can read the app key in this environment.
+    environment:
+      name: pin-app
+      deployment: false
+    steps:
+      - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        id: app-token
+        with:
+          client-id: ${{ vars.PIN_APP_CLIENT_ID }}
+          private-key: ${{ secrets.PIN_APP_PRIVATE_KEY }}
+          permission-contents: write
+
+      # The branch ruleset lives in the settings, and this check holds without it.
+      # GitHub also signs commits from its web editor, so the author check matters.
+      - name: the new commits are signed pins from the app
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+          BOT: ${{ steps.app-token.outputs.app-slug }}[bot]
+        run: |
+          set -euo pipefail
+          ok="$(gh api "repos/$GITHUB_REPOSITORY/compare/main...$SHA" --jq '
+            .status == "ahead"
+            and all(.commits[]; .commit.verification.verified and .author.login == env.BOT)
+            and all(.files[]; .filename == "charts/azerothcore/values.yaml")')"
+          if [ "$ok" != true ]; then
+            echo "::error::main...$SHA holds more than signed pin commits from $BOT"
+            exit 1
+          fi
+
+      # force=false: GitHub refuses the update unless it is a fast-forward.
+      - name: fast-forward main to the tested commit
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+        run: gh api -X PATCH "repos/$GITHUB_REPOSITORY/git/refs/heads/main" -f sha="$SHA" -F force=false

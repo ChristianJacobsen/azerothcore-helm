@@ -1,30 +1,52 @@
 name: images
 
-# Builds the non-vanilla flavor images (from the mod-playerbots fork) and
-# publishes them to ghcr.io/<repo-owner>/ac-wotlk-*.
-#
-# Per-arch tags  : <flavor>-amd64 / <flavor>-arm64   (intermediate)
-# Published tags : <flavor>        (rolling multi-arch manifest)
-#                  <flavor>-YYYYMMDD                  (pin these in values.yaml)
 on:
   workflow_dispatch:
   schedule:
-    # Weekly, Monday 04:17 UTC — picks up upstream fork changes.
+    # Picks up Ubuntu security updates between source bumps.
     - cron: "17 4 * * 1"
+  push:
+    branches: [main]
+    paths: ["build/**", ".github/workflows/images.yaml"]
 
 permissions:
+  contents: read
   packages: write
 
 env:
-  REGISTRY: ghcr.io/${{ github.repository_owner }}
+  FLAVORS: vanilla playerbots
 
 jobs:
+  meta:
+    runs-on: ubuntu-24.04
+    outputs:
+      date: ${{ steps.meta.outputs.date }}
+      tags: ${{ steps.meta.outputs.tags }}
+      registry: ${{ steps.meta.outputs.registry }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - id: meta
+        run: |
+          set -euo pipefail
+          . build/sources.env
+          date="$(date -u +%Y%m%d)"
+          tags='{}'
+          for flavor in $FLAVORS; do
+            core_pin="${flavor^^}_CORE_REF"
+            tags="$(jq -c --arg f "$flavor" --arg t "$date-${!core_pin:0:7}" '. + {($f): $t}' <<< "$tags")"
+          done
+          echo "date=$date" >> "$GITHUB_OUTPUT"
+          echo "tags=$tags" >> "$GITHUB_OUTPUT"
+          # GHCR names are lowercase.
+          echo "registry=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
+
   build:
-    timeout-minutes: 360
+    needs: meta
+    timeout-minutes: 300
     strategy:
       fail-fast: false
       matrix:
-        flavor: [playerbots]
+        flavor: [vanilla, playerbots]
         arch: [amd64, arm64]
         include:
           - arch: amd64
@@ -33,20 +55,16 @@ jobs:
             runs-on: ubuntu-24.04-arm
     runs-on: ${{ matrix.runs-on }}
     steps:
-      - uses: actions/checkout@v5
-
+      # The compile stage of the core keeps its object files, which do not fit
+      # on a runner as it comes.
       - name: free disk space
-        uses: jlumbroso/free-disk-space@main
-        with:
-          tool-cache: true
-          android: true
-          dotnet: true
-          haskell: true
-          large-packages: false
+        run: sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc "$AGENT_TOOLSDIRECTORY"
 
-      - uses: docker/setup-buildx-action@v3
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: docker/login-action@v3
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -55,38 +73,111 @@ jobs:
       - name: build + push per-arch images
         env:
           FLAVOR: ${{ matrix.flavor }}
-          REGISTRY: ${{ env.REGISTRY }}
-          TAG: ${{ matrix.flavor }}-${{ matrix.arch }}
+          REGISTRY: ${{ needs.meta.outputs.registry }}
+          TAG: ${{ fromJSON(needs.meta.outputs.tags)[matrix.flavor] }}-${{ matrix.arch }}
           PLATFORMS: linux/${{ matrix.arch }}
           PUSH: "1"
+          IMAGE_SOURCE: ${{ github.server_url }}/${{ github.repository }}
+          # A registry cache has no eviction window, so the weekly run skips the
+          # compile when build/sources.env and the base image are unchanged.
+          CACHE_REF: ${{ needs.meta.outputs.registry }}/azerothcore-${{ matrix.flavor }}-cache:${{ matrix.arch }}
         run: build/build-images.sh
 
   manifest:
-    needs: build
+    needs: [meta, build]
     runs-on: ubuntu-24.04
+    permissions:
+      packages: write
+      id-token: write   # keyless cosign signs with the OIDC token of the run
+    outputs:
+      pins: ${{ steps.merge.outputs.pins }}
     steps:
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
-      - uses: docker/login-action@v3
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: merge multi-arch manifests
+      - name: merge + sign multi-arch manifests
+        id: merge
+        env:
+          REGISTRY: ${{ needs.meta.outputs.registry }}
+          TAGS: ${{ needs.meta.outputs.tags }}
+          IMAGE_SOURCE: ${{ github.server_url }}/${{ github.repository }}
         run: |
           set -euo pipefail
-          DATE="$(date -u +%Y%m%d)"
-          for flavor in playerbots playerbots-eluna; do
-            for img in worldserver authserver db-import; do
-              refs=""
-              for arch in amd64 arm64; do
-                refs="$refs $REGISTRY/ac-wotlk-$img:$flavor-$arch"
+          pins='{}'
+          for flavor in $FLAVORS; do
+            tag="$(jq -r --arg f "$flavor" '.[$f]' <<< "$TAGS")"
+            pin="$(jq -cn --arg tag "$tag" '{tag: $tag}')"
+            for img in worldserver:worldserver authserver:authserver db-import:dbImport client-data:clientData; do
+              repo="$REGISTRY/azerothcore-$flavor-${img%%:*}"
+              # An index has no image labels, so GHCR reads these annotations.
+              description="$(docker buildx imagetools inspect "$repo:$tag-amd64" \
+                --format '{{ index .Image.Config.Labels "org.opencontainers.image.description" }}')"
+              for t in "$tag" latest; do
+                docker buildx imagetools create -t "$repo:$t" \
+                  --annotation "index:org.opencontainers.image.source=$IMAGE_SOURCE" \
+                  --annotation "index:org.opencontainers.image.description=$description" \
+                  "$repo:$tag-amd64" "$repo:$tag-arm64"
               done
-              for tag in "$flavor" "$flavor-$DATE"; do
-                docker buildx imagetools create \
-                  -t "$REGISTRY/ac-wotlk-$img:$tag" $refs
-              done
+              # The index digest (not a platform digest) is the value to pin.
+              digest="$(docker buildx imagetools inspect "$repo:$tag" --format '{{ json .Manifest }}' | jq -r .digest)"
+              echo "$repo:$tag@$digest"
+              pin="$(jq -c --arg c "${img#*:}" --arg d "$digest" '. + {($c): $d}' <<< "$pin")"
+              cosign sign --yes "$repo@$digest"
             done
+            pins="$(jq -c --arg f "$flavor" --argjson p "$pin" '. + {($f): $p}' <<< "$pins")"
           done
-        shell: bash
+          echo "pins=$pins" >> "$GITHUB_OUTPUT"
+
+  pin:
+    needs: [meta, manifest]
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    # Only main can read the app key in this environment.
+    environment:
+      name: pin-app
+      deployment: false
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: pin the images in the chart values
+        env:
+          PINS: ${{ needs.manifest.outputs.pins }}
+        run: |
+          set -euo pipefail
+          jq -r 'to_entries[] | [.key, .value.tag, .value.worldserver, .value.authserver, .value.dbImport, .value.clientData] | @tsv' <<< "$PINS" |
+            while IFS=$'\t' read -r flavor tag worldserver authserver db_import client_data; do
+              build/pin-images.py --flavor "$flavor" --tag "$tag" \
+                --worldserver-digest "$worldserver" --authserver-digest "$authserver" \
+                --dbImport-digest "$db_import" --clientData-digest "$client_data"
+            done
+
+      - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        id: app-token
+        if: vars.PIN_APP_CLIENT_ID != ''
+        with:
+          client-id: ${{ vars.PIN_APP_CLIENT_ID }}
+          private-key: ${{ secrets.PIN_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+
+      - uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
+        with:
+          # A pull request opened with GITHUB_TOKEN does not start chart-ci.
+          token: ${{ steps.app-token.outputs.token || secrets.GITHUB_TOKEN }}
+          sign-commits: true
+          branch: chore/pin-images
+          commit-message: "chore(chart): pin images of ${{ needs.meta.outputs.date }}"
+          title: "chore(chart): pin images of ${{ needs.meta.outputs.date }}"
+          body: |
+            Pins the chart images to the builds that the images workflow published. The diff shows the tags and digests, and `build/sources.env` holds the source commits.
+          delete-branch: true
