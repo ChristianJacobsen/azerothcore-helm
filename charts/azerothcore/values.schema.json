@@ -211,7 +211,50 @@
       "$ref": "#/definitions/server"
     },
     "worldserver": {
-      "$ref": "#/definitions/server"
+      "allOf": [
+        {
+          "$ref": "#/definitions/server"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "soap": {
+              "type": "object",
+              "properties": {
+                "enabled": {
+                  "type": "boolean"
+                },
+                "port": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 65535
+                }
+              }
+            },
+            "remoteAccess": {
+              "type": "object",
+              "properties": {
+                "enabled": {
+                  "type": "boolean"
+                },
+                "port": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 65535
+                }
+              }
+            },
+            "terminationGracePeriodSeconds": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "progressDeadlineSeconds": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        }
+      ]
     },
     "gateway": {
       "type": "object",

@@ -1,7 +1,26 @@
+{{- $fullname := include "azerothcore.fullname" . -}}
+{{- $soap := .Values.worldserver.soap -}}
+{{- $ra := .Values.worldserver.remoteAccess -}}
+{{/* A non-root process cannot raise its priority, and the core logs an error when ProcessPriority asks it to. */}}
+{{- $defaults := dict
+  "DataDir" "/azerothcore/env/dist/data"
+  "LogsDir" "/azerothcore/env/dist/logs"
+  "RealmID" (.Values.dbInit.realm.id | int)
+  "WorldServerPort" 8085
+  "BindIP" "0.0.0.0"
+  "SOAP.Enabled" (ternary 1 0 $soap.enabled)
+  "SOAP.IP" "0.0.0.0"
+  "SOAP.Port" ($soap.port | int)
+  "Ra.Enable" (ternary 1 0 $ra.enabled)
+  "Ra.IP" "0.0.0.0"
+  "Ra.Port" ($ra.port | int)
+  "ProcessPriority" 0
+-}}
+{{- $config := merge (deepCopy .Values.worldserver.config) $defaults -}}
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ printf "%s-worldserver" (include "azerothcore.fullname" .) }}
+  name: {{ printf "%s-worldserver" $fullname }}
   labels:
     {{- include "azerothcore.labels" . | nindent 4 }}
     app.kubernetes.io/component: worldserver
@@ -23,21 +42,29 @@ spec:
       {{- end }}
   selector:
     {{- include "azerothcore.selectorLabels" (dict "ctx" . "component" "worldserver") | nindent 4 }}
-{{- if .Values.worldserver.soap.enabled }}
+{{- if or $soap.enabled $ra.enabled }}
 ---
+# Both consoles give GM access, so they stay on a ClusterIP service.
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ printf "%s-worldserver-soap" (include "azerothcore.fullname" .) }}
+  name: {{ printf "%s-worldserver-admin" $fullname }}
   labels:
     {{- include "azerothcore.labels" . | nindent 4 }}
     app.kubernetes.io/component: worldserver
 spec:
   type: ClusterIP
   ports:
+    {{- if $soap.enabled }}
     - name: soap
-      port: 7878
+      port: {{ $soap.port }}
       targetPort: soap
+    {{- end }}
+    {{- if $ra.enabled }}
+    - name: ra
+      port: {{ $ra.port }}
+      targetPort: ra
+    {{- end }}
   selector:
     {{- include "azerothcore.selectorLabels" (dict "ctx" . "component" "worldserver") | nindent 4 }}
 {{- end }}
@@ -45,7 +72,7 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ printf "%s-worldserver" (include "azerothcore.fullname" .) }}
+  name: {{ printf "%s-worldserver" $fullname }}
   labels:
     {{- include "azerothcore.labels" . | nindent 4 }}
     app.kubernetes.io/component: worldserver
@@ -67,6 +94,7 @@ spec:
       {{- else }}
       automountServiceAccountToken: false
       {{- end }}
+      terminationGracePeriodSeconds: {{ .Values.worldserver.terminationGracePeriodSeconds }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       initContainers:
@@ -107,31 +135,25 @@ spec:
               for f in /azerothcore/env/dist/etc/modules/*.conf.dist;
               do [ -e "$f" ] && cp "$f" "${f%.dist}"; done;
               exec worldserver
-          # The worldserver console reads stdin: kubectl attach -it deploy/<release>-worldserver
+          # The worldserver console reads stdin: kubectl attach -it deploy/{{ $fullname }}-worldserver
           stdin: true
           tty: true
           env:
-            - name: AC_DATA_DIR
-              value: /azerothcore/env/dist/data
-            - name: AC_LOGS_DIR
-              value: /azerothcore/env/dist/logs
             {{- include "azerothcore.db.env" (dict "ctx" . "world" true) | nindent 12 }}
-            - name: AC_REALM_ID
-              value: {{ .Values.dbInit.realm.id | int | quote }}
-            {{- if .Values.worldserver.soap.enabled }}
-            - name: AC_SOAP_ENABLED
-              value: "1"
-            {{- end }}
-            {{- include "azerothcore.confEnv" .Values.worldserver.config | trim | nindent 12 }}
+            {{- include "azerothcore.confEnv" $config | trim | nindent 12 }}
             {{- with .Values.worldserver.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
           ports:
             - name: world
               containerPort: 8085
-            {{- if .Values.worldserver.soap.enabled }}
+            {{- if $soap.enabled }}
             - name: soap
-              containerPort: 7878
+              containerPort: {{ $soap.port }}
+            {{- end }}
+            {{- if $ra.enabled }}
+            - name: ra
+              containerPort: {{ $ra.port }}
             {{- end }}
           volumeMounts:
             - name: data
@@ -155,6 +177,7 @@ spec:
             tcpSocket:
               port: world
             periodSeconds: 30
+            failureThreshold: 4
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
           resources:

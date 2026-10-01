@@ -244,11 +244,15 @@ worldserver:
   config: {}
   extraEnv: []
   soap:
-    # -- Enable the SOAP remote console (port 7878, ClusterIP only).
-    # NOTE: SOAP authenticates with an in-game GM account, so it cannot create
-    # your first account. Use `kubectl attach` to the worldserver console for
-    # that (see NOTES.txt).
+    # -- SOAP remote console (ClusterIP service only). Log in with a GM
+    # account (gmlevel 3).
     enabled: false
+    port: 7878
+  remoteAccess:
+    # -- Telnet remote console (ClusterIP service only), for example through
+    # kubectl port-forward.
+    enabled: false
+    port: 3443
   elunaScripts:
     # -- Existing PVC with Lua scripts, mounted at /azerothcore/env/dist/lua_scripts.
     # Only useful with images that have mod-eluna compiled in.
@@ -267,6 +271,8 @@ worldserver:
       memory: 2Gi
     limits:
       memory: 4Gi
+  # -- The worldserver saves all players on SIGTERM.
+  terminationGracePeriodSeconds: 60
   # -- The rollout includes the wait for the client-data Job, which takes
   # long on slow links.
   progressDeadlineSeconds: 3600

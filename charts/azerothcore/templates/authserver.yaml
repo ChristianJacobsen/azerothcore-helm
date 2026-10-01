@@ -1,3 +1,9 @@
+{{- $defaults := dict
+  "LogsDir" "/azerothcore/env/dist/logs"
+  "RealmServerPort" 3724
+  "BindIP" "0.0.0.0"
+-}}
+{{- $config := merge (deepCopy .Values.authserver.config) $defaults -}}
 apiVersion: v1
 kind: Service
 metadata:
@@ -59,10 +65,8 @@ spec:
           image: {{ include "azerothcore.image" (dict "ctx" . "component" "authserver") }}
           imagePullPolicy: {{ .Values.imagePullPolicy }}
           env:
-            - name: AC_LOGS_DIR
-              value: /azerothcore/env/dist/logs
             {{- include "azerothcore.db.env" (dict "ctx" .) | nindent 12 }}
-            {{- include "azerothcore.confEnv" .Values.authserver.config | trim | nindent 12 }}
+            {{- include "azerothcore.confEnv" $config | trim | nindent 12 }}
             {{- with .Values.authserver.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
