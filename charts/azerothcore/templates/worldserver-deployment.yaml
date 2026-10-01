@@ -27,6 +27,18 @@ spec:
       {{- include "azerothcore.pull" . | nindent 6 }}
       serviceAccountName: {{ include "azerothcore.serviceAccountName" . }}
       initContainers:
+        # Module SQL data (for example the mod-playerbots base SQL for
+        # acore_playerbots) ships only in the db-import image. The worldserver
+        # image has an empty /azerothcore/modules. Copy the data so that the
+        # worldserver can create and populate module-owned databases at boot.
+        # The copy is harmless for the vanilla flavor.
+        - name: module-data
+          image: {{ include "azerothcore.image" (dict "ctx" . "component" "dbImport") }}
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          command: ["sh", "-c", "cd /azerothcore/modules && tar --exclude-vcs -cf - * | tar -xf - -C /module-data"]
+          volumeMounts:
+            - name: module-data
+              mountPath: /module-data
         {{- if .Values.dbInit.enabled }}
         - name: wait-db-init
           image: {{ include "azerothcore.kubectlImage" . }}
@@ -85,6 +97,9 @@ spec:
             - name: data
               mountPath: /azerothcore/env/dist/data
               readOnly: true
+            - name: module-data
+              mountPath: /azerothcore/modules
+              readOnly: true
             {{- if .Values.worldserver.elunaScripts.existingClaim }}
             - name: eluna-scripts
               mountPath: /azerothcore/env/dist/lua_scripts
@@ -105,6 +120,8 @@ spec:
         - name: data
           persistentVolumeClaim:
             claimName: {{ include "azerothcore.dataClaimName" . }}
+        - name: module-data
+          emptyDir: {}
         {{- if .Values.worldserver.elunaScripts.existingClaim }}
         - name: eluna-scripts
           persistentVolumeClaim:

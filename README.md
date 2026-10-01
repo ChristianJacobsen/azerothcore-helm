@@ -74,6 +74,14 @@ weekly and on-demand, multi-arch), or you can build them locally (next
 section). If you select a non-vanilla flavor without a registry, the chart
 fails with a clear message.
 
+The playerbots flavor uses a fourth database, `acore_playerbots`. The
+worldserver creates and populates it on the first boot. The chart copies the
+module SQL data from the db-import image into a shared volume, because the
+worldserver image does not carry it.
+
+The module logs in 500 bots by default. Set `AiPlayerbot.MinRandomBots` and
+`AiPlayerbot.MaxRandomBots` in `worldserver.config` to change the count.
+
 A worldserver with thousands of bots needs more memory than the defaults:
 
 ```yaml
