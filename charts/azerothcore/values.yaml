@@ -158,7 +158,7 @@ clientData:
   # 1. volume: any Kubernetes volume source, for example nfs or hostPath.
   # 2. existingClaim: a PVC that you manage.
   # 3. Neither: the chart creates a PVC from `storage`. The chart keeps that
-  #    PVC on `helm uninstall`, because the download is about 5 GB.
+  #    PVC on `helm uninstall`, because the data takes 3.1 GB.
   volume: {}
   existingClaim: ""
   storage:

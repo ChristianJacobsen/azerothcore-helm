@@ -8,7 +8,7 @@ kind: PersistentVolumeClaim
 metadata:
   name: {{ include "azerothcore.dataClaimName" . }}
   annotations:
-    # The download is about 5 GB, so the data outlives helm uninstall.
+    # The data takes 3.1 GB, so it outlives helm uninstall.
     helm.sh/resource-policy: keep
   labels:
     {{- include "azerothcore.labels" . | nindent 4 }}
