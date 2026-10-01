@@ -32,6 +32,9 @@
         },
         "kubectl": {
           "$ref": "#/definitions/image"
+        },
+        "python": {
+          "$ref": "#/definitions/image"
         }
       }
     },
@@ -137,6 +140,37 @@
             "address": {
               "type": "string"
             }
+          }
+        },
+        "accounts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "username": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 17
+              },
+              "password": {
+                "type": "string",
+                "maxLength": 16
+              },
+              "existingSecret": {
+                "type": "string"
+              },
+              "passwordKey": {
+                "type": "string"
+              },
+              "gmlevel": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 3
+              }
+            },
+            "required": [
+              "username"
+            ]
           }
         }
       }

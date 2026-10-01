@@ -20,6 +20,7 @@ REALM_ID="${REALM_ID:-1}"
 REALM_NAME="${REALM_NAME:-}"
 REALM_ADDRESS="${REALM_ADDRESS:-}"
 REALM_PORT="${REALM_PORT:-}"
+ACCOUNTS_SQL="${ACCOUNTS_SQL:-}"
 MYSQL_WAIT_ATTEMPTS="${MYSQL_WAIT_ATTEMPTS:-120}"
 MYSQL_WAIT_INTERVAL_SECONDS="${MYSQL_WAIT_INTERVAL_SECONDS:-5}"
 MYSQL_CONNECT_TIMEOUT_SECONDS="${MYSQL_CONNECT_TIMEOUT_SECONDS:-5}"
@@ -87,6 +88,11 @@ if [ "${#set_parts[@]}" -gt 0 ]; then
   sql="UPDATE realmlist SET $(IFS=,; echo "${set_parts[*]}") WHERE id = $REALM_ID;"
   log "$sql"
   app "$DB_AUTH" -e "$sql"
+fi
+
+if [ -n "$ACCOUNTS_SQL" ] && [ -s "$ACCOUNTS_SQL" ]; then
+  log "creating accounts"
+  app "$DB_AUTH" < "$ACCOUNTS_SQL"
 fi
 
 log "database initialization complete"

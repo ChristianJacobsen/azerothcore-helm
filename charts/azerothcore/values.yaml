@@ -61,6 +61,13 @@ images:
     repository: alpine/k8s
     tag: 1.35.8
     digest: ""
+  # -- Python, for the account SQL of the db-init Job and for helm test.
+  # renovate: datasource=docker depName=library/python
+  python:
+    registry: docker.io
+    repository: library/python
+    tag: 3.14.7-slim
+    digest: ""
 
 database:
   # -- Database user for the servers and dbimport. The db-init Job creates it
@@ -152,6 +159,20 @@ dbInit:
     # works when you play on the machine that exposes the service. For LAN or
     # WAN players, set the LAN or WAN address (or the Gateway address).
     address: 127.0.0.1
+  # -- Accounts to create when they do not exist. The Job never changes the
+  # password of an existing account. On every run, it sets gmlevel (0 player,
+  # 1 moderator, 2 game master, 3 administrator) for all realms.
+  # Names: 17 characters at most. Passwords: 16 at most. Neither is
+  # case-sensitive.
+  # accounts:
+  #   - username: admin
+  #     password: changeme
+  #     gmlevel: 3
+  #   - username: admin2
+  #     existingSecret: my-accounts
+  #     passwordKey: admin2-password
+  #     gmlevel: 3
+  accounts: []
   resources:
     requests:
       cpu: 100m

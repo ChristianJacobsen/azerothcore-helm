@@ -2,6 +2,34 @@
 {{- $fullname := include "azerothcore.fullname" . -}}
 {{- $adminUser := include "azerothcore.db.adminUser" . -}}
 {{- $names := .Values.database.names -}}
+{{- $accounts := .Values.dbInit.accounts -}}
+{{- $inlineAccounts := list -}}
+{{- range $i, $a := $accounts -}}
+{{- if not $a.username -}}
+{{- fail (printf "dbInit.accounts[%d]: username is required" $i) -}}
+{{- end -}}
+{{- if and (not $a.existingSecret) (not $a.password) -}}
+{{- fail (printf "dbInit.accounts[%d] (%s): set password or existingSecret" $i $a.username) -}}
+{{- end -}}
+{{- if not $a.existingSecret -}}
+{{- $inlineAccounts = append $inlineAccounts $i -}}
+{{- end -}}
+{{- end -}}
+{{- if $inlineAccounts }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ printf "%s-accounts" $fullname }}
+  labels:
+    {{- include "azerothcore.labels" . | nindent 4 }}
+    app.kubernetes.io/component: db-init
+type: Opaque
+stringData:
+  {{- range $i := $inlineAccounts }}
+  {{ printf "account-%d" $i }}: {{ (index $accounts $i).password | toString | quote }}
+  {{- end }}
+---
+{{- end }}
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -17,6 +45,42 @@ spec:
     spec:
       {{- include "azerothcore.pullSecrets" . | nindent 6 }}
       restartPolicy: Never
+      {{- if $accounts }}
+      initContainers:
+        - name: accounts
+          image: {{ include "azerothcore.renderImage" .Values.images.python }}
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          command: ["python3", "/etc/azerothcore-helm/accounts.py", "--output", "/work/accounts.sql"]
+          env:
+            {{- range $i, $a := $accounts }}
+            - name: {{ printf "ACCOUNT_%d_USERNAME" $i }}
+              value: {{ $a.username | quote }}
+            - name: {{ printf "ACCOUNT_%d_PASSWORD" $i }}
+              valueFrom:
+                secretKeyRef:
+                  {{- if $a.existingSecret }}
+                  name: {{ $a.existingSecret }}
+                  key: {{ $a.passwordKey | default "password" }}
+                  {{- else }}
+                  name: {{ printf "%s-accounts" $fullname }}
+                  key: {{ printf "account-%d" $i }}
+                  {{- end }}
+            - name: {{ printf "ACCOUNT_%d_GMLEVEL" $i }}
+              value: {{ $a.gmlevel | default 0 | int | quote }}
+            {{- end }}
+          volumeMounts:
+            - name: scripts
+              mountPath: /etc/azerothcore-helm
+              readOnly: true
+            - name: work
+              mountPath: /work
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+      {{- end }}
       containers:
         - name: db-init
           image: {{ include "azerothcore.image" (dict "ctx" . "component" "dbImport") }}
@@ -55,14 +119,22 @@ spec:
               value: {{ .Values.dbInit.realm.name | quote }}
             - name: REALM_ADDRESS
               value: {{ .Values.dbInit.realm.address | quote }}
+            {{- if $accounts }}
+            - name: ACCOUNTS_SQL
+              value: /work/accounts.sql
+            {{- end }}
           volumeMounts:
             - name: scripts
               mountPath: /etc/azerothcore-helm
               readOnly: true
+            - name: work
+              mountPath: /work
           resources:
             {{- toYaml .Values.dbInit.resources | nindent 12 }}
       volumes:
         - name: scripts
           configMap:
             name: {{ printf "%s-scripts" $fullname }}
+        - name: work
+          emptyDir: {}
 {{- end }}
