@@ -119,6 +119,8 @@ spec:
               value: {{ .Values.dbInit.realm.name | quote }}
             - name: REALM_ADDRESS
               value: {{ .Values.dbInit.realm.address | quote }}
+            - name: REALM_PORT
+              value: {{ include "azerothcore.realmPort" . | quote }}
             {{- if $accounts }}
             - name: ACCOUNTS_SQL
               value: /work/accounts.sql

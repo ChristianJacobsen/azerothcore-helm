@@ -139,6 +139,14 @@
             },
             "address": {
               "type": "string"
+            },
+            "port": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 1,
+              "maximum": 65535
             }
           }
         },
@@ -256,7 +264,9 @@
               ]
             },
             "port": {
-              "type": "integer"
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535
             },
             "nodePort": {
               "type": [
@@ -268,6 +278,14 @@
             },
             "annotations": {
               "type": "object"
+            },
+            "externalTrafficPolicy": {
+              "type": "string",
+              "enum": [
+                "",
+                "Cluster",
+                "Local"
+              ]
             }
           }
         },

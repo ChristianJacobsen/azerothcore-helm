@@ -168,3 +168,14 @@ Usage: include "azerothcore.configEnv" .Values.worldserver.config
 {{- define "azerothcore.clientDataJobName" -}}
 {{- printf "%s-client-data-r%d" (include "azerothcore.fullname" .) (.Release.Revision | int) -}}
 {{- end -}}
+
+{{- define "azerothcore.realmPort" -}}
+{{- $svc := .Values.worldserver.service -}}
+{{- if not (kindIs "invalid" .Values.dbInit.realm.port) -}}
+{{- .Values.dbInit.realm.port | int -}}
+{{- else if and (eq $svc.type "NodePort") $svc.nodePort -}}
+{{- $svc.nodePort | int -}}
+{{- else -}}
+{{- $svc.port | int -}}
+{{- end -}}
+{{- end -}}

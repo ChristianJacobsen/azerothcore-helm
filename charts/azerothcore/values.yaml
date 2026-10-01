@@ -159,6 +159,10 @@ dbInit:
     # works when you play on the machine that exposes the service. For LAN or
     # WAN players, set the LAN or WAN address (or the Gateway address).
     address: 127.0.0.1
+    # -- Port that game clients use to reach the worldserver. null = the
+    # worldserver service port, or its nodePort when the service type is
+    # NodePort and a nodePort is set.
+    port: null
   # -- Accounts to create when they do not exist. The Job never changes the
   # password of an existing account. On every run, it sets gmlevel (0 player,
   # 1 moderator, 2 game master, 3 administrator) for all realms.
@@ -189,11 +193,14 @@ authserver:
   # -- Extra raw environment variables (appended after config).
   extraEnv: []
   service:
-    type: NodePort
+    # -- LoadBalancer exposes the standard game ports. Clients expect the
+    # auth port 3724.
+    type: LoadBalancer
     port: 3724
-    # -- null = let Kubernetes allocate. Set e.g. 33724 for a fixed port.
+    # -- null = let Kubernetes allocate.
     nodePort: null
     annotations: {}
+    externalTrafficPolicy: ""
   resources:
     requests:
       cpu: 50m
@@ -220,10 +227,11 @@ worldserver:
     # Only useful with images that have mod-eluna compiled in.
     existingClaim: ""
   service:
-    type: NodePort
+    type: LoadBalancer
     port: 8085
     nodePort: null
     annotations: {}
+    externalTrafficPolicy: ""
   resources:
     requests:
       cpu: 500m
