@@ -59,9 +59,7 @@ jobs:
             --certificate-identity-regexp "^$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/\.github/workflows/" \
             --certificate-oidc-issuer https://token.actions.githubusercontent.com >/dev/null
 
-      # artifacthub-repo.yml holds the repository ID that Artifact Hub assigns.
       - name: push the artifact hub metadata
-        if: hashFiles('artifacthub-repo.yml') != ''
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |

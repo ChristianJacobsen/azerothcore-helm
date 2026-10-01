@@ -100,4 +100,4 @@ To release the chart, wait until the pin pull request merges. Then push a tag:
 git tag chart-v0.1.0 && git push --tags
 ```
 
-The release workflow packages the README and the LICENSE with the chart, and it signs the chart with cosign.
+The release workflow packages the README and the LICENSE with the chart, and it signs the chart with cosign. It also pushes `artifacthub-repo.yml` to the chart repository, so that Artifact Hub shows the chart as a verified publisher.

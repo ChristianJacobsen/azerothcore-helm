@@ -1,5 +1,7 @@
 # azerothcore-helm
 
+[![Artifact Hub](https://img.shields.io/endpoint?url=https://artifacthub.io/badge/repository/azerothcore)](https://artifacthub.io/packages/helm/azerothcore/azerothcore)
+
 A Helm chart for [AzerothCore](https://www.azerothcore.org/), a World of Warcraft server for Wrath of the Lich King (3.3.5a).
 
 The chart runs MySQL, the authserver (the login server), and the worldserver. Two Jobs prepare the data: one creates the databases and applies the SQL updates, and one downloads the client data (the maps and game tables that the worldserver reads).
