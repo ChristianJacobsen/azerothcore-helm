@@ -207,10 +207,37 @@ persistentVolumeClaim:
     - --for=condition=complete
     - {{ printf "job/%s" .job }}
     - --timeout=3600s
+  env:
+    - name: HOME
+      value: /tmp
+  volumeMounts:
+    - name: tmp
+      mountPath: /tmp
+  securityContext:
+    {{- toYaml .ctx.Values.securityContext | nindent 4 }}
   resources:
     requests:
       cpu: 10m
       memory: 32Mi
     limits:
       memory: 128Mi
+{{- end -}}
+
+{{/* The entrypoint of the images writes the .conf files and checks that it can write the logs. */}}
+{{- define "azerothcore.writableMounts" -}}
+- name: etc
+  mountPath: /azerothcore/env/dist/etc
+- name: logs
+  mountPath: /azerothcore/env/dist/logs
+- name: tmp
+  mountPath: /tmp
+{{- end -}}
+
+{{- define "azerothcore.writableVolumes" -}}
+- name: etc
+  emptyDir: {}
+- name: logs
+  emptyDir: {}
+- name: tmp
+  emptyDir: {}
 {{- end -}}

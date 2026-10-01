@@ -14,6 +14,8 @@ spec:
   {{- include "azerothcore.pullSecrets" . | nindent 2 }}
   restartPolicy: Never
   automountServiceAccountToken: false
+  securityContext:
+    {{- toYaml .Values.podSecurityContext | nindent 4 }}
   containers:
     - name: test
       image: {{ include "azerothcore.renderImage" .Values.images.python }}
@@ -50,6 +52,8 @@ spec:
         - name: scripts
           mountPath: /etc/azerothcore-helm
           readOnly: true
+      securityContext:
+        {{- toYaml .Values.securityContext | nindent 8 }}
       resources:
         requests:
           cpu: 10m

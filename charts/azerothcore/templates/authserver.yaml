@@ -48,6 +48,8 @@ spec:
       {{- else }}
       automountServiceAccountToken: false
       {{- end }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
       {{- if .Values.dbInit.enabled }}
       initContainers:
         {{- include "azerothcore.waitJob" (dict "ctx" . "name" "db-init" "job" (include "azerothcore.dbInitJobName" .)) | nindent 8 }}
@@ -76,5 +78,11 @@ spec:
             tcpSocket:
               port: auth
             periodSeconds: 20
+          volumeMounts:
+            {{- include "azerothcore.writableMounts" . | nindent 12 }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
           resources:
             {{- toYaml .Values.authserver.resources | nindent 12 }}
+      volumes:
+        {{- include "azerothcore.writableVolumes" . | nindent 8 }}

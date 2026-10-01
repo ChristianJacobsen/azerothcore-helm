@@ -67,12 +67,12 @@ spec:
       {{- else }}
       automountServiceAccountToken: false
       {{- end }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
       initContainers:
-        # Module SQL data (for example the mod-playerbots base SQL for
-        # acore_playerbots) ships only in the db-import image. The worldserver
-        # image has an empty /azerothcore/modules. Copy the data so that the
-        # worldserver can create and populate module-owned databases at boot.
-        # The copy is harmless for the vanilla flavor.
+        # mod-playerbots fills its database at boot from the SQL in modules/.
+        # The worldserver image has an empty modules/, and the db-import image
+        # has the full one.
         - name: module-data
           image: {{ include "azerothcore.image" (dict "ctx" . "component" "dbImport") }}
           imagePullPolicy: {{ .Values.imagePullPolicy }}
@@ -80,6 +80,14 @@ spec:
           volumeMounts:
             - name: module-data
               mountPath: /module-data
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 256Mi
         {{- if .Values.dbInit.enabled }}
         {{- include "azerothcore.waitJob" (dict "ctx" . "name" "db-init" "job" (include "azerothcore.dbInitJobName" .)) | nindent 8 }}
         {{- end }}
@@ -123,6 +131,7 @@ spec:
             - name: module-data
               mountPath: /azerothcore/modules
               readOnly: true
+            {{- include "azerothcore.writableMounts" . | nindent 12 }}
             {{- if .Values.worldserver.elunaScripts.existingClaim }}
             - name: eluna-scripts
               mountPath: /azerothcore/env/dist/lua_scripts
@@ -137,6 +146,8 @@ spec:
             tcpSocket:
               port: world
             periodSeconds: 30
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
           resources:
             {{- toYaml .Values.worldserver.resources | nindent 12 }}
       volumes:
@@ -144,6 +155,7 @@ spec:
           {{- include "azerothcore.dataVolume" . | nindent 10 }}
         - name: module-data
           emptyDir: {}
+        {{- include "azerothcore.writableVolumes" . | nindent 8 }}
         {{- if .Values.worldserver.elunaScripts.existingClaim }}
         - name: eluna-scripts
           persistentVolumeClaim:

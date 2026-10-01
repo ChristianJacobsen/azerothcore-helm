@@ -45,6 +45,9 @@ spec:
     spec:
       {{- include "azerothcore.pullSecrets" . | nindent 6 }}
       restartPolicy: Never
+      automountServiceAccountToken: false
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
       {{- if $accounts }}
       initContainers:
         - name: accounts
@@ -74,6 +77,8 @@ spec:
               readOnly: true
             - name: work
               mountPath: /work
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
           resources:
             requests:
               cpu: 10m
@@ -131,6 +136,9 @@ spec:
               readOnly: true
             - name: work
               mountPath: /work
+            {{- include "azerothcore.writableMounts" . | nindent 12 }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
           resources:
             {{- toYaml .Values.dbInit.resources | nindent 12 }}
       volumes:
@@ -139,4 +147,5 @@ spec:
             name: {{ printf "%s-scripts" $fullname }}
         - name: work
           emptyDir: {}
+        {{- include "azerothcore.writableVolumes" . | nindent 8 }}
 {{- end }}

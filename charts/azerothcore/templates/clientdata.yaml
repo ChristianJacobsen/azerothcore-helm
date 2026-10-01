@@ -40,6 +40,9 @@ spec:
     spec:
       {{- include "azerothcore.pullSecrets" . | nindent 6 }}
       restartPolicy: Never
+      automountServiceAccountToken: false
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
         # The image downloads the data release that its core expects, and it
         # skips the download when data-version on the volume names that release.
@@ -49,9 +52,15 @@ spec:
           volumeMounts:
             - name: data
               mountPath: /azerothcore/env/dist/data
+            - name: tmp
+              mountPath: /tmp
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
           resources:
             {{- toYaml $cd.resources | nindent 12 }}
       volumes:
         - name: data
           {{- include "azerothcore.dataVolume" . | nindent 10 }}
+        - name: tmp
+          emptyDir: {}
 {{- end }}
