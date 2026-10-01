@@ -1,0 +1,59 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    "helpers:pinGitHubActionDigestsToSemver",
+    "group:allNonMajor"
+  ],
+  "minimumReleaseAge": "7 days",
+  "customManagers": [
+    {
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^build/sources\\.env$/"
+      ],
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+) currentValue=(?<currentValue>\\S+)\\n[A-Z_]+=(?<currentDigest>[0-9a-f]{40})"
+      ]
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^charts/azerothcore/values\\.yaml$/"
+      ],
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)\\n\\s+[A-Za-z]+:\\n\\s+registry: \\S+\\n\\s+repository: \\S+\\n\\s+tag: (?<currentValue>\\S+)"
+      ]
+    }
+  ],
+  "packageRules": [
+    {
+      "description": "The regex manager covers values.yaml. helm-values finds the same images under registry-prefixed names, which the rules below do not match.",
+      "matchManagers": [
+        "helm-values"
+      ],
+      "enabled": false
+    },
+    {
+      "description": "MySQL upgrades the data directory in place, and the upgrade cannot be undone. Move to the next LTS by hand, after a test.",
+      "matchDepNames": [
+        "library/mysql"
+      ],
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "enabled": false
+    },
+    {
+      "description": "git-refs has no release timestamps. Without this, the minimum release age holds these updates forever.",
+      "matchDatasources": [
+        "git-refs"
+      ],
+      "minimumReleaseAgeBehaviour": "timestamp-optional",
+      "groupName": "azerothcore sources",
+      "schedule": [
+        "before 4am on monday"
+      ]
+    }
+  ]
+}
