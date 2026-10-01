@@ -1,0 +1,57 @@
+{{- $cd := .Values.clientData -}}
+{{- if not (has $cd.source (list "download" "none")) -}}
+{{- fail "clientData.source must be download or none" -}}
+{{- end -}}
+{{- if include "azerothcore.createDataClaim" . }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "azerothcore.dataClaimName" . }}
+  annotations:
+    # The download is about 5 GB, so the data outlives helm uninstall.
+    helm.sh/resource-policy: keep
+  labels:
+    {{- include "azerothcore.labels" . | nindent 4 }}
+    app.kubernetes.io/component: client-data
+spec:
+  accessModes:
+    {{- toYaml $cd.storage.accessModes | nindent 4 }}
+  {{- with $cd.storage.storageClass }}
+  storageClassName: {{ . | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ $cd.storage.size }}
+---
+{{- end }}
+{{- if eq $cd.source "download" }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "azerothcore.clientDataJobName" . }}
+  labels:
+    {{- include "azerothcore.labels" . | nindent 4 }}
+    app.kubernetes.io/component: client-data
+spec:
+  backoffLimit: 3
+  template:
+    metadata:
+      {{- include "azerothcore.podMetadata" (dict "ctx" . "component" "client-data") | nindent 6 }}
+    spec:
+      {{- include "azerothcore.pullSecrets" . | nindent 6 }}
+      restartPolicy: Never
+      containers:
+        # The image downloads the data release that its core expects, and it
+        # skips the download when data-version on the volume names that release.
+        - name: client-data
+          image: {{ include "azerothcore.image" (dict "ctx" . "component" "clientData") }}
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          volumeMounts:
+            - name: data
+              mountPath: /azerothcore/env/dist/data
+          resources:
+            {{- toYaml $cd.resources | nindent 12 }}
+      volumes:
+        - name: data
+          {{- include "azerothcore.dataVolume" . | nindent 10 }}
+{{- end }}

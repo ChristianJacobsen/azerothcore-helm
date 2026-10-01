@@ -40,30 +40,18 @@ spec:
       {{- include "azerothcore.selectorLabels" (dict "ctx" . "component" "authserver") | nindent 6 }}
   template:
     metadata:
-      labels:
-        {{- include "azerothcore.selectorLabels" (dict "ctx" . "component" "authserver") | nindent 8 }}
-        {{- with .Values.podLabels }}
-        {{- toYaml . | nindent 8 }}
-        {{- end }}
-      {{- with .Values.podAnnotations }}
-      annotations:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
+      {{- include "azerothcore.podMetadata" (dict "ctx" . "component" "authserver") | nindent 6 }}
     spec:
       {{- include "azerothcore.pullSecrets" . | nindent 6 }}
+      {{- if .Values.dbInit.enabled }}
       serviceAccountName: {{ include "azerothcore.serviceAccountName" . }}
+      {{- else }}
+      automountServiceAccountToken: false
+      {{- end }}
+      {{- if .Values.dbInit.enabled }}
       initContainers:
-        {{- if .Values.dbInit.enabled }}
-        - name: wait-db-init
-          image: {{ include "azerothcore.renderImage" .Values.images.kubectl }}
-          imagePullPolicy: {{ .Values.imagePullPolicy }}
-          command: ["kubectl"]
-          args:
-            - wait
-            - --for=condition=complete
-            - job/{{ include "azerothcore.dbInitJobName" . }}
-            - --timeout=3600s
-        {{- end }}
+        {{- include "azerothcore.waitJob" (dict "ctx" . "name" "db-init" "job" (include "azerothcore.dbInitJobName" .)) | nindent 8 }}
+      {{- end }}
       containers:
         - name: authserver
           image: {{ include "azerothcore.image" (dict "ctx" . "component" "authserver") }}

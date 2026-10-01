@@ -160,6 +160,23 @@ Usage: include "azerothcore.configEnv" .Values.worldserver.config
 {{- .Values.clientData.existingClaim | default (printf "%s-client-data" (include "azerothcore.fullname" .)) -}}
 {{- end -}}
 
+{{- define "azerothcore.createDataClaim" -}}
+{{- if and (not .Values.clientData.volume) (not .Values.clientData.existingClaim) -}}true{{- end -}}
+{{- end -}}
+
+{{- define "azerothcore.dataVolume" -}}
+{{- if .Values.clientData.volume -}}
+{{- toYaml .Values.clientData.volume -}}
+{{- else -}}
+persistentVolumeClaim:
+  claimName: {{ include "azerothcore.dataClaimName" . }}
+{{- end -}}
+{{- end -}}
+
+{{- define "azerothcore.waitsForJobs" -}}
+{{- if or .Values.dbInit.enabled (eq .Values.clientData.source "download") -}}true{{- end -}}
+{{- end -}}
+
 {{/* Jobs are immutable, so each release revision needs new Job names. */}}
 {{- define "azerothcore.dbInitJobName" -}}
 {{- printf "%s-db-init-r%d" (include "azerothcore.fullname" .) (.Release.Revision | int) -}}
@@ -178,4 +195,22 @@ Usage: include "azerothcore.configEnv" .Values.worldserver.config
 {{- else -}}
 {{- $svc.port | int -}}
 {{- end -}}
+{{- end -}}
+
+{{- define "azerothcore.waitJob" -}}
+- name: {{ printf "wait-%s" .name }}
+  image: {{ include "azerothcore.renderImage" .ctx.Values.images.kubectl }}
+  imagePullPolicy: {{ .ctx.Values.imagePullPolicy }}
+  command: ["kubectl"]
+  args:
+    - wait
+    - --for=condition=complete
+    - {{ printf "job/%s" .job }}
+    - --timeout=3600s
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      memory: 128Mi
 {{- end -}}

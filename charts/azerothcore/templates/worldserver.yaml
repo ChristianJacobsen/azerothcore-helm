@@ -51,6 +51,7 @@ metadata:
     app.kubernetes.io/component: worldserver
 spec:
   replicas: 1
+  progressDeadlineSeconds: {{ .Values.worldserver.progressDeadlineSeconds }}
   strategy:
     type: Recreate
   selector:
@@ -58,18 +59,14 @@ spec:
       {{- include "azerothcore.selectorLabels" (dict "ctx" . "component" "worldserver") | nindent 6 }}
   template:
     metadata:
-      labels:
-        {{- include "azerothcore.selectorLabels" (dict "ctx" . "component" "worldserver") | nindent 8 }}
-        {{- with .Values.podLabels }}
-        {{- toYaml . | nindent 8 }}
-        {{- end }}
-      {{- with .Values.podAnnotations }}
-      annotations:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
+      {{- include "azerothcore.podMetadata" (dict "ctx" . "component" "worldserver") | nindent 6 }}
     spec:
       {{- include "azerothcore.pullSecrets" . | nindent 6 }}
+      {{- if include "azerothcore.waitsForJobs" . }}
       serviceAccountName: {{ include "azerothcore.serviceAccountName" . }}
+      {{- else }}
+      automountServiceAccountToken: false
+      {{- end }}
       initContainers:
         # Module SQL data (for example the mod-playerbots base SQL for
         # acore_playerbots) ships only in the db-import image. The worldserver
@@ -84,30 +81,11 @@ spec:
             - name: module-data
               mountPath: /module-data
         {{- if .Values.dbInit.enabled }}
-        - name: wait-db-init
-          image: {{ include "azerothcore.renderImage" .Values.images.kubectl }}
-          imagePullPolicy: {{ .Values.imagePullPolicy }}
-          command: ["kubectl"]
-          args:
-            - wait
-            - --for=condition=complete
-            - job/{{ include "azerothcore.dbInitJobName" . }}
-            - --timeout=3600s
+        {{- include "azerothcore.waitJob" (dict "ctx" . "name" "db-init" "job" (include "azerothcore.dbInitJobName" .)) | nindent 8 }}
         {{- end }}
-        - name: wait-client-data
-          image: {{ include "azerothcore.image" (dict "ctx" . "component" "worldserver") }}
-          imagePullPolicy: {{ .Values.imagePullPolicy }}
-          args:
-            - bash
-            - -c
-            - >-
-              until [ -n "$(ls -A /azerothcore/env/dist/data 2>/dev/null)" ]; do
-              echo "waiting for client data to be downloaded..."; sleep 5; done;
-              echo "client data present"
-          volumeMounts:
-            - name: data
-              mountPath: /azerothcore/env/dist/data
-              readOnly: true
+        {{- if eq .Values.clientData.source "download" }}
+        {{- include "azerothcore.waitJob" (dict "ctx" . "name" "client-data" "job" (include "azerothcore.clientDataJobName" .)) | nindent 8 }}
+        {{- end }}
       containers:
         - name: worldserver
           image: {{ include "azerothcore.image" (dict "ctx" . "component" "worldserver") }}
@@ -163,8 +141,7 @@ spec:
             {{- toYaml .Values.worldserver.resources | nindent 12 }}
       volumes:
         - name: data
-          persistentVolumeClaim:
-            claimName: {{ include "azerothcore.dataClaimName" . }}
+          {{- include "azerothcore.dataVolume" . | nindent 10 }}
         - name: module-data
           emptyDir: {}
         {{- if .Values.worldserver.elunaScripts.existingClaim }}

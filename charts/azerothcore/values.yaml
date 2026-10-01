@@ -134,16 +134,29 @@ externalDatabase:
   adminUser: ""
 
 clientData:
-  # -- Run a Job that downloads the game data (maps/vmaps/mmaps/dbc, ~5 GB,
-  # 10-15 min on first install) into the data volume. Idempotent: it skips
-  # when the data is already present.
-  download: true
-  # -- Use an existing PVC that already contains extracted client data
-  # (mounted at /azerothcore/env/dist/data). Created for you when empty.
+  # -- Where the client data lives (mounted at /azerothcore/env/dist/data).
+  # The first match wins:
+  # 1. volume: any Kubernetes volume source, for example nfs or hostPath.
+  # 2. existingClaim: a PVC that you manage.
+  # 3. Neither: the chart creates a PVC from `storage`. The chart keeps that
+  #    PVC on `helm uninstall`, because the download is about 5 GB.
+  volume: {}
   existingClaim: ""
   storage:
     size: 20Gi
     storageClass: ""
+    accessModes: ["ReadWriteOnce"]
+  # -- How the client-data Job fills the volume:
+  # download  download the extracted data release that the core expects
+  #           (github.com/wowgaming/client-data)
+  # none      no Job. The volume already holds dbc/, maps/, vmaps/ and mmaps/.
+  source: download
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      memory: 512Mi
 
 dbInit:
   # -- Run the db-init Job on every install and upgrade. It creates the
@@ -240,6 +253,9 @@ worldserver:
       memory: 2Gi
     limits:
       memory: 4Gi
+  # -- The rollout includes the wait for the client-data Job, which takes
+  # long on slow links.
+  progressDeadlineSeconds: 3600
   startupProbe:
     periodSeconds: 10
     # -- World load can take several minutes (longer under emulation or with

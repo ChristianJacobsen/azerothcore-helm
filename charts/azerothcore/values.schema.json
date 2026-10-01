@@ -113,11 +113,35 @@
     "clientData": {
       "type": "object",
       "properties": {
-        "download": {
-          "type": "boolean"
+        "volume": {
+          "type": "object"
         },
         "existingClaim": {
           "type": "string"
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "download",
+            "none"
+          ]
+        },
+        "storage": {
+          "type": "object",
+          "properties": {
+            "size": {
+              "type": "string"
+            },
+            "storageClass": {
+              "type": "string"
+            },
+            "accessModes": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
         }
       }
     },

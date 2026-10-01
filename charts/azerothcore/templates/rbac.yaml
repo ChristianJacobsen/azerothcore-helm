@@ -1,4 +1,6 @@
-# Minimal RBAC so server pods can wait for the db-init Job to complete.
+{{- if include "azerothcore.waitsForJobs" . -}}
+# The server pods wait for the Jobs of their release revision. This
+# is the smallest RBAC that `kubectl wait` needs for that.
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -30,3 +32,4 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: {{ include "azerothcore.serviceAccountName" . }}
+{{- end }}
