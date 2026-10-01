@@ -27,8 +27,24 @@ jobs:
         run: |
           set -euo pipefail
           for flavor in vanilla playerbots; do
-            helm template t charts/azerothcore --set flavor=$flavor >/dev/null
-          done
+            helm template t charts/azerothcore --set flavor=$flavor
+          done > rendered.yaml
+
+      # Without this annotation, Artifact Hub scans only the images of a render
+      # with the default values, which leaves out the playerbots flavor.
+      - name: list the images for the artifact hub scan
+        run: |
+          set -euo pipefail
+          # Artifact Hub does not scan a chart version with more images.
+          max_scanned_images=15
+          images="$(yq ea '[.. | select(tag == "!!map" and has("image")) | .image] | unique
+            | map({"name": (split("@")[0] | split("/") | .[-1] | split(":")[0]), "image": .})' rendered.yaml)"
+          count="$(yq length <<< "$images")"
+          if (( count > max_scanned_images )); then
+            echo "::error::the chart has $count images, but Artifact Hub scans at most $max_scanned_images"
+            exit 1
+          fi
+          IMAGES="$images" yq -i '.annotations."artifacthub.io/images" = strenv(IMAGES)' charts/azerothcore/Chart.yaml
 
       - name: package + push
         id: push
