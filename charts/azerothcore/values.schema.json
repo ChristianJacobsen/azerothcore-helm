@@ -251,6 +251,9 @@
             "progressDeadlineSeconds": {
               "type": "integer",
               "minimum": 1
+            },
+            "luaScripts": {
+              "type": "object"
             }
           }
         }

@@ -253,10 +253,10 @@ worldserver:
     # kubectl port-forward.
     enabled: false
     port: 3443
-  elunaScripts:
-    # -- Existing PVC with Lua scripts, mounted at /azerothcore/env/dist/lua_scripts.
-    # Only useful with images that have mod-eluna compiled in.
-    existingClaim: ""
+  # -- Lua scripts for mod-ale, which the vanilla images include: any
+  # Kubernetes volume source, for example a configMap or a
+  # persistentVolumeClaim. The chart points ALE.ScriptPath at it.
+  luaScripts: {}
   service:
     type: LoadBalancer
     port: 8085
