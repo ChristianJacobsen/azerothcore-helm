@@ -122,6 +122,8 @@ if [ "$(git -C "$CTX" rev-parse -q --verify HEAD 2>/dev/null)" != "$CORE_REF" ];
   git -C "$CTX" fetch -q --depth 1 origin "$CORE_REF"
   git -C "$CTX" checkout -q --force --detach FETCH_HEAD
 fi
+# An earlier run deleted the index (see below), and the reset rebuilds it.
+git -C "$CTX" reset -q --hard
 # CMake compiles every folder in modules/, so drop the modules of earlier builds.
 git -C "$CTX" clean -q -ffdx
 
@@ -129,11 +131,23 @@ git -C "$CTX" clean -q -ffdx
 # and thousands of scanner findings with them. The servers need only the
 # libncurses.so.6 and libtinfo.so.6 libraries. The build stage keeps the headers.
 dockerfile="$CTX/apps/docker/Dockerfile"
-git -C "$CTX" checkout -q -- apps/docker/Dockerfile
 sed 's/ libicu74 libncurses5-dev / libicu74 libncurses6 /' "$dockerfile" > "$dockerfile.patched"
 mv "$dockerfile.patched" "$dockerfile"
 grep -q ' libicu74 libncurses6 ' "$dockerfile" \
   || die "the runtime packages of apps/docker/Dockerfile changed, update the libncurses5-dev patch"
+
+# The compile step bind-mounts .git, so the content of .git is part of its cache
+# key. A fetch writes a pack, an index and reflogs that differ between two runs.
+# Loose objects depend only on the commit.
+for pack in "$CTX"/.git/objects/pack/*.pack; do
+  [ -e "$pack" ] || continue
+  mv "$pack" "$CTX/.git/unpack.tmp"
+  rm -f "${pack%.pack}".*
+  git -C "$CTX" unpack-objects -q < "$CTX/.git/unpack.tmp"
+  rm "$CTX/.git/unpack.tmp"
+done
+rm -rf "$CTX/.git/index" "$CTX/.git/logs" "$CTX/.git/FETCH_HEAD" "$CTX/.git/ORIG_HEAD" \
+  "$CTX/.git/objects/info/packs"
 
 module_revisions=""
 for m in $base_mods $extra_mods; do
@@ -182,15 +196,13 @@ for target in worldserver authserver db-import client-data; do
   [ -n "$IMAGE_SOURCE" ] && labels+=(--label "org.opencontainers.image.source=$IMAGE_SOURCE")
   [ -n "$IMAGE_REVISION" ] && labels+=(--label "org.opencontainers.image.revision=$IMAGE_REVISION")
   echo "==> building $target"
-  # CACHEBUST: the compile reads the revision from a bind mount of .git, and
-  # the mount is not part of the cache key. CTOOLS_BUILD: the chart downloads
-  # extracted client data, so dbimport is the only tool that the images need.
+  # CTOOLS_BUILD: the chart downloads extracted client data, so dbimport is
+  # the only tool that the images need.
   # shellcheck disable=SC2086
   docker buildx build $BUILDER_ARGS $cache_args "$CTX" \
     --file "$CTX/apps/docker/Dockerfile" \
     --target "$target" \
     --platform "$PLATFORMS" \
-    --build-arg "CACHEBUST=$CORE_REF" \
     --build-arg "CTOOLS_BUILD=db-only" \
     "${labels[@]}" \
     --tag "$REGISTRY/$IMAGE_PREFIX-$target:$TAG" \
