@@ -106,9 +106,10 @@ jobs:
       - name: follow the realm list to the worldserver
         run: |
           set -euo pipefail
+          python_image="$(yq '.images.python | .registry + "/" + .repository + ":" + .tag' charts/azerothcore/values.yaml)"
           kubectl -n azerothcore run world-check --restart=Never \
-            --image=docker.io/library/python:3.14.7-slim \
-            --overrides='{"apiVersion":"v1","spec":{"containers":[{"name":"world-check","image":"docker.io/library/python:3.14.7-slim",
+            --image="$python_image" \
+            --overrides='{"apiVersion":"v1","spec":{"containers":[{"name":"world-check","image":"'"$python_image"'",
               "command":["python3","/scripts/auth-check.py","--host","ac-azerothcore-authserver","--user","e2e","--password","e2epass","--expect-online","--check-world"],
               "volumeMounts":[{"name":"scripts","mountPath":"/scripts"}]}],
               "volumes":[{"name":"scripts","configMap":{"name":"ac-azerothcore-scripts"}}]}}'

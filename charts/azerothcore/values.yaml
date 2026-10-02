@@ -60,18 +60,18 @@ images:
       tag: "20261001-7f12e89"
       digest: "sha256:912b915f0373900e8239e839a61ef6d33a913c325470aaebe21da5697d3f5f46"
   # -- kubectl, for the init containers that wait for the Jobs.
-  # renovate: datasource=docker depName=alpine/k8s
+  # renovate: datasource=docker depName=registry.k8s.io/kubectl
   kubectl:
-    registry: docker.io
-    repository: alpine/k8s
-    tag: 1.35.8
+    registry: registry.k8s.io
+    repository: kubectl
+    tag: v1.35.9
     digest: ""
   # -- Python, for the account SQL of the db-init Job and for helm test.
   # renovate: datasource=docker depName=library/python
   python:
     registry: docker.io
     repository: library/python
-    tag: 3.14.7-slim
+    tag: 3.14.7-alpine
     digest: ""
 
 # -- The images of the core run as uid 1000, the acore user of its Dockerfile.

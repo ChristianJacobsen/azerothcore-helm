@@ -21,15 +21,16 @@ spec:
       image: {{ include "azerothcore.renderImage" .Values.images.python }}
       imagePullPolicy: {{ .Values.imagePullPolicy }}
       command:
-        - bash
+        - sh
         - -c
         - |
-          set -euo pipefail
+          set -eu
           connect_timeout_seconds=5
-          timeout "$connect_timeout_seconds" bash -c '</dev/tcp/{{ $fullname }}-authserver/{{ .Values.authserver.service.port }}'
-          echo "authserver {{ $fullname }}-authserver:{{ .Values.authserver.service.port }} reachable"
-          timeout "$connect_timeout_seconds" bash -c '</dev/tcp/{{ $fullname }}-worldserver/{{ .Values.worldserver.service.port }}'
-          echo "worldserver {{ $fullname }}-worldserver:{{ .Values.worldserver.service.port }} reachable"
+          for address in {{ $fullname }}-authserver:{{ .Values.authserver.service.port }} {{ $fullname }}-worldserver:{{ .Values.worldserver.service.port }}; do
+            python3 -c 'import socket, sys; host, port = sys.argv[1].rsplit(":", 1); socket.create_connection((host, int(port)), timeout=float(sys.argv[2])).close()' \
+              "$address" "$connect_timeout_seconds"
+            echo "$address reachable"
+          done
           {{- if $account }}
           python3 /etc/azerothcore-helm/auth-check.py --host {{ $fullname }}-authserver --port {{ .Values.authserver.service.port }} --expect-online
           {{- end }}
