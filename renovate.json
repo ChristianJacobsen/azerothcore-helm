@@ -44,9 +44,10 @@
       "enabled": false
     },
     {
-      "description": "MySQL upgrades the data directory in place, and the upgrade cannot be undone. Move to the next LTS by hand, after a test.",
+      "description": "MySQL upgrades the data directory in place, and the upgrade cannot be undone. Move to the next LTS by hand, after a test. The dockerfile manager names the image mysql, and the regex manager library/mysql.",
       "matchDepNames": [
-        "library/mysql"
+        "library/mysql",
+        "mysql"
       ],
       "matchUpdateTypes": [
         "major"
