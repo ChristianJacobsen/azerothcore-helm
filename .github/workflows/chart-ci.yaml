@@ -163,4 +163,8 @@ jobs:
               --worldserver-digest "sha256:$(printf '%064d' 1)" --authserver-digest "sha256:$(printf '%064d' 2)" \
               --dbImport-digest "sha256:$(printf '%064d' 3)" --clientData-digest "sha256:$(printf '%064d' 4)"
           done
-          test "$(diff charts/azerothcore/values.yaml /tmp/values.yaml | grep -c '^>')" = 16
+          for image in mysql python; do
+            python3 build/pin-images.py --values /tmp/values.yaml --image $image --tag 1.0-20260101 \
+              --digest "sha256:$(printf '%064d' 5)"
+          done
+          test "$(diff charts/azerothcore/values.yaml /tmp/values.yaml | grep -c '^>')" = 20

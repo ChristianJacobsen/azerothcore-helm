@@ -38,6 +38,13 @@ jobs:
           for flavor in vanilla playerbots; do
             helm template t charts/azerothcore --set flavor=$flavor
           done > rendered.yaml
+          # An image without a tag renders as latest.
+          unpinned="$(yq ea '[.. | select(tag == "!!map" and has("image")) | .image
+            | select(test("^ghcr.io/") and (test("@sha256:") | not))] | unique | .[]' rendered.yaml)"
+          if [[ -n "$unpinned" ]]; then
+            echo "::error::these images have no pin: $unpinned"
+            exit 1
+          fi
 
       # Without this annotation, Artifact Hub scans only the images of a render
       # with the default values, which leaves out the playerbots flavor.

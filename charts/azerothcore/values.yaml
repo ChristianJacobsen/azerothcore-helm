@@ -66,12 +66,12 @@ images:
     repository: kubectl
     tag: v1.35.9
     digest: ""
-  # -- Python, for the account SQL of the db-init Job and for helm test.
-  # renovate: datasource=docker depName=library/python
+  # -- Python without pip (build/python.Dockerfile), for the account SQL of the
+  # db-init Job and for helm test.
   python:
-    registry: docker.io
-    repository: library/python
-    tag: 3.14.7-alpine
+    registry: ghcr.io
+    repository: christianjacobsen/azerothcore-python
+    tag: ""
     digest: ""
 
 # -- The images of the core run as uid 1000, the acore user of its Dockerfile.
@@ -110,11 +110,13 @@ database:
 mysql:
   # -- false = use `externalDatabase`.
   enabled: true
-  # renovate: datasource=docker depName=library/mysql
+  # -- MySQL 9.7 without gosu and MySQL Shell (build/mysql.Dockerfile). It runs
+  # as uid 999. A new major version of MySQL upgrades the data directory, and
+  # the upgrade cannot be undone.
   image:
-    registry: docker.io
-    repository: library/mysql
-    tag: 8.4.11
+    registry: ghcr.io
+    repository: christianjacobsen/azerothcore-mysql
+    tag: ""
     digest: ""
   # -- Root password. Empty = generated and kept across upgrades. MySQL reads
   # it only when it initializes an empty data directory.

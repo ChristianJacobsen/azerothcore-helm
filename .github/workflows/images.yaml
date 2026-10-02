@@ -15,6 +15,8 @@ permissions:
 
 env:
   FLAVORS: vanilla playerbots
+  # Images of build/<name>.Dockerfile, for the chart besides the core images.
+  IMAGES: mysql python
 
 jobs:
   meta:
@@ -23,6 +25,7 @@ jobs:
       date: ${{ steps.meta.outputs.date }}
       tags: ${{ steps.meta.outputs.tags }}
       registry: ${{ steps.meta.outputs.registry }}
+      image_tags: ${{ steps.meta.outputs.image_tags }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - id: meta
@@ -35,10 +38,18 @@ jobs:
             core_pin="${flavor^^}_CORE_REF"
             tags="$(jq -c --arg f "$flavor" --arg t "$date-${!core_pin:0:7}" '. + {($f): $t}' <<< "$tags")"
           done
-          echo "date=$date" >> "$GITHUB_OUTPUT"
-          echo "tags=$tags" >> "$GITHUB_OUTPUT"
-          # GHCR names are lowercase.
-          echo "registry=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
+          image_tags='{}'
+          for image in $IMAGES; do
+            base_tag="$(sed -n 's/^ARG [A-Z_]*_IMAGE=[^:]*://p' "build/$image.Dockerfile")"
+            image_tags="$(jq -c --arg i "$image" --arg t "$base_tag-$date" '. + {($i): $t}' <<< "$image_tags")"
+          done
+          {
+            echo "date=$date"
+            echo "tags=$tags"
+            echo "image_tags=$image_tags"
+            # GHCR names are lowercase.
+            echo "registry=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}"
+          } >> "$GITHUB_OUTPUT"
 
   build:
     needs: meta
@@ -83,14 +94,56 @@ jobs:
           CACHE_REF: ${{ needs.meta.outputs.registry }}/azerothcore-${{ matrix.flavor }}-cache:${{ matrix.arch }}
         run: build/build-images.sh
 
+  build-images:
+    needs: meta
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [mysql, python]
+        arch: [amd64, arm64]
+        include:
+          - arch: amd64
+            runs-on: ubuntu-24.04
+          - arch: arm64
+            runs-on: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runs-on }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: build + push the per-arch image
+        env:
+          IMAGE: ${{ matrix.image }}
+          ARCH: ${{ matrix.arch }}
+          REGISTRY: ${{ needs.meta.outputs.registry }}
+          TAG: ${{ fromJSON(needs.meta.outputs.image_tags)[matrix.image] }}
+          IMAGE_SOURCE: ${{ github.server_url }}/${{ github.repository }}
+        run: |
+          set -euo pipefail
+          docker buildx build build --file "build/$IMAGE.Dockerfile" --platform "linux/$ARCH" --push \
+            --label "org.opencontainers.image.created=$(date -u '+%Y-%m-%dT%H:%M:%SZ')" \
+            --label "org.opencontainers.image.version=$TAG" \
+            --label "org.opencontainers.image.title=azerothcore-$IMAGE" \
+            --label "org.opencontainers.image.source=$IMAGE_SOURCE" \
+            --label "org.opencontainers.image.revision=$GITHUB_SHA" \
+            --tag "$REGISTRY/azerothcore-$IMAGE:$TAG-$ARCH"
+
   manifest:
-    needs: [meta, build]
+    needs: [meta, build, build-images]
     runs-on: ubuntu-24.04
     permissions:
       packages: write
       id-token: write   # keyless cosign signs with the OIDC token of the run
     outputs:
       pins: ${{ steps.merge.outputs.pins }}
+      image_pins: ${{ steps.merge.outputs.image_pins }}
     steps:
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
@@ -107,33 +160,45 @@ jobs:
         env:
           REGISTRY: ${{ needs.meta.outputs.registry }}
           TAGS: ${{ needs.meta.outputs.tags }}
+          IMAGE_TAGS: ${{ needs.meta.outputs.image_tags }}
           IMAGE_SOURCE: ${{ github.server_url }}/${{ github.repository }}
         run: |
           set -euo pipefail
+          # Sets digest to the index digest (not a platform digest), the value to pin.
+          merge() {
+            local repo="$1" tag="$2" description t
+            # An index has no image labels, so GHCR reads these annotations.
+            description="$(docker buildx imagetools inspect "$repo:$tag-amd64" \
+              --format '{{ index .Image.Config.Labels "org.opencontainers.image.description" }}')"
+            for t in "$tag" latest; do
+              docker buildx imagetools create -t "$repo:$t" \
+                --annotation "index:org.opencontainers.image.source=$IMAGE_SOURCE" \
+                --annotation "index:org.opencontainers.image.description=$description" \
+                "$repo:$tag-amd64" "$repo:$tag-arm64"
+            done
+            digest="$(docker buildx imagetools inspect "$repo:$tag" --format '{{ json .Manifest }}' | jq -r .digest)"
+            echo "$repo:$tag@$digest"
+            cosign sign --yes "$repo@$digest"
+          }
           pins='{}'
           for flavor in $FLAVORS; do
             tag="$(jq -r --arg f "$flavor" '.[$f]' <<< "$TAGS")"
             pin="$(jq -cn --arg tag "$tag" '{tag: $tag}')"
             for img in worldserver:worldserver authserver:authserver db-import:dbImport client-data:clientData; do
               repo="$REGISTRY/azerothcore-$flavor-${img%%:*}"
-              # An index has no image labels, so GHCR reads these annotations.
-              description="$(docker buildx imagetools inspect "$repo:$tag-amd64" \
-                --format '{{ index .Image.Config.Labels "org.opencontainers.image.description" }}')"
-              for t in "$tag" latest; do
-                docker buildx imagetools create -t "$repo:$t" \
-                  --annotation "index:org.opencontainers.image.source=$IMAGE_SOURCE" \
-                  --annotation "index:org.opencontainers.image.description=$description" \
-                  "$repo:$tag-amd64" "$repo:$tag-arm64"
-              done
-              # The index digest (not a platform digest) is the value to pin.
-              digest="$(docker buildx imagetools inspect "$repo:$tag" --format '{{ json .Manifest }}' | jq -r .digest)"
-              echo "$repo:$tag@$digest"
+              merge "$repo" "$tag"
               pin="$(jq -c --arg c "${img#*:}" --arg d "$digest" '. + {($c): $d}' <<< "$pin")"
-              cosign sign --yes "$repo@$digest"
             done
             pins="$(jq -c --arg f "$flavor" --argjson p "$pin" '. + {($f): $p}' <<< "$pins")"
           done
           echo "pins=$pins" >> "$GITHUB_OUTPUT"
+          image_pins='{}'
+          for image in $IMAGES; do
+            tag="$(jq -r --arg i "$image" '.[$i]' <<< "$IMAGE_TAGS")"
+            merge "$REGISTRY/azerothcore-$image" "$tag"
+            image_pins="$(jq -c --arg i "$image" --arg t "$tag" --arg d "$digest" '. + {($i): {tag: $t, digest: $d}}' <<< "$image_pins")"
+          done
+          echo "image_pins=$image_pins" >> "$GITHUB_OUTPUT"
 
   pin:
     needs: [meta, manifest]
@@ -152,6 +217,7 @@ jobs:
       - name: pin the images in the chart values
         env:
           PINS: ${{ needs.manifest.outputs.pins }}
+          IMAGE_PINS: ${{ needs.manifest.outputs.image_pins }}
         run: |
           set -euo pipefail
           jq -r 'to_entries[] | [.key, .value.tag, .value.worldserver, .value.authserver, .value.dbImport, .value.clientData] | @tsv' <<< "$PINS" |
@@ -159,6 +225,10 @@ jobs:
               build/pin-images.py --flavor "$flavor" --tag "$tag" \
                 --worldserver-digest "$worldserver" --authserver-digest "$authserver" \
                 --dbImport-digest "$db_import" --clientData-digest "$client_data"
+            done
+          jq -r 'to_entries[] | [.key, .value.tag, .value.digest] | @tsv' <<< "$IMAGE_PINS" |
+            while IFS=$'\t' read -r image tag digest; do
+              build/pin-images.py --image "$image" --tag "$tag" --digest "$digest"
             done
 
       - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0

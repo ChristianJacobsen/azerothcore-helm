@@ -20,7 +20,14 @@ Each build makes four images. The sizes are for the vanilla flavor on arm64:
 | `azerothcore-<flavor>-db-import` | `dbimport`, the MySQL client, and the SQL of the core and the modules | 1.4 GB |
 | `azerothcore-<flavor>-client-data` | the script that downloads the client data | 170 MB |
 
-The images must come from the same build, because the SQL updates follow the core revision. The file `build/sources.env` pins the core and module repositories to commits, and Renovate updates the pins.
+Two more images come from small Dockerfiles in `build/`, and Renovate updates their base images:
+
+| Image | Contents | Size |
+| --- | --- | --- |
+| `azerothcore-mysql` | the official MySQL image without gosu and MySQL Shell (`build/mysql.Dockerfile`) | 280 MB |
+| `azerothcore-python` | the official Python image on Alpine without pip (`build/python.Dockerfile`), for the scripts of the chart | 20 MB |
+
+The images of a flavor must come from the same build, because the SQL updates follow the core revision. The file `build/sources.env` pins the core and module repositories to commits, and Renovate updates the pins.
 
 To build the images, you need Docker with buildx. With a warm compiler cache, a vanilla build took 15 minutes on a 10-core machine. A first build compiles the whole core and takes longer. This command builds the vanilla images, or the flavor and modules of `build/mods.local.yaml` (see the [README](README.md#other-modules)):
 
@@ -85,12 +92,12 @@ The chart runs the scripts in `charts/azerothcore/files`. Artifact Hub shows the
 | Workflow | Trigger | Purpose |
 | --- | --- | --- |
 | `chart-ci` | pull request, push | lint, render tests, kubeconform, shellcheck, the SRP6 test vectors |
-| `images` | weekly, push to `build/` | builds, signs, and publishes the multi-arch images of both flavors |
+| `images` | weekly, push to `build/` | builds, signs, and publishes the multi-arch images of both flavors, `azerothcore-mysql`, and `azerothcore-python` |
 | `pin-merge` | `chart-ci` passes on the pin pull request | fast-forwards `main` to the pin commit, so that the commit keeps its signature |
 | `chart-e2e` | nightly | installs the chart on kind for each flavor with the published images, logs in, and follows the realm list to the worldserver |
 | `chart-release` | tag `chart-v*` | signs and pushes the chart to `oci://ghcr.io/christianjacobsen/charts` |
 
-The images workflow publishes the images with the tags `<date>-<core commit>` and `latest`. Then it opens a pull request that pins the new tags and digests of both flavors in `charts/azerothcore/values.yaml`. If one flavor fails to build, the workflow pins none of them.
+The images workflow publishes the images with the tags `<date>-<core commit>` and `latest`. Then it opens a pull request that pins the new tags and digests of all images in `charts/azerothcore/values.yaml`. The tags of `azerothcore-mysql` and `azerothcore-python` are `<base image tag>-<date>`. If one flavor fails to build, the workflow pins none of them.
 
 ## Releases
 

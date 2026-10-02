@@ -34,10 +34,24 @@ spec:
     spec:
       {{- include "azerothcore.pullSecrets" . | nindent 6 }}
       terminationGracePeriodSeconds: 60
+      # uid 999 is the mysql user of the MySQL images. As that user, the
+      # entrypoint skips its switch from root.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
+        fsGroup: 999
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: mysql
           image: {{ include "azerothcore.renderImage" .Values.mysql.image }}
           imagePullPolicy: {{ .Values.imagePullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
           {{- with .Values.mysql.extraArgs }}
           args:
             {{- toYaml . | nindent 12 }}
@@ -57,6 +71,10 @@ spec:
           volumeMounts:
             - name: data
               mountPath: /var/lib/mysql
+            - name: run
+              mountPath: /var/run/mysqld
+            - name: tmp
+              mountPath: /tmp
           readinessProbe:
             exec:
               command: ["sh", "-c", "MYSQL_PWD=\"$MYSQL_ROOT_PASSWORD\" mysqladmin ping -h 127.0.0.1 -u root --silent"]
@@ -70,6 +88,11 @@ spec:
             failureThreshold: 6
           resources:
             {{- toYaml .Values.mysql.resources | nindent 12 }}
+      volumes:
+        - name: run
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
   volumeClaimTemplates:
     - metadata:
         name: data

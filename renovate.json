@@ -24,6 +24,15 @@
       "matchStrings": [
         "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)\\n\\s+[A-Za-z]+:\\n\\s+registry: \\S+\\n\\s+repository: \\S+\\n\\s+tag: (?<currentValue>\\S+)"
       ]
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^build/.+\\.Dockerfile$/"
+      ],
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)\\nARG [A-Z_]+_IMAGE=[^:\\s]+:(?<currentValue>\\S+)"
+      ]
     }
   ],
   "packageRules": [
