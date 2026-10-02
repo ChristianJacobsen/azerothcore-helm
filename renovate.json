@@ -55,6 +55,16 @@
       "enabled": false
     },
     {
+      "description": "A new Ubuntu major changes the runners of every workflow. Move them by hand.",
+      "matchDepNames": [
+        "ubuntu"
+      ],
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "enabled": false
+    },
+    {
       "description": "git-refs has no release timestamps. Without this, the minimum release age holds these updates forever.",
       "matchDatasources": [
         "git-refs"
