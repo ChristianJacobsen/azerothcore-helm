@@ -125,6 +125,16 @@ fi
 # CMake compiles every folder in modules/, so drop the modules of earlier builds.
 git -C "$CTX" clean -q -ffdx
 
+# The runtime stage installs libncurses5-dev, which pulls in the kernel headers
+# and thousands of scanner findings with them. The servers need only the
+# libncurses.so.6 and libtinfo.so.6 libraries. The build stage keeps the headers.
+dockerfile="$CTX/apps/docker/Dockerfile"
+git -C "$CTX" checkout -q -- apps/docker/Dockerfile
+sed 's/ libicu74 libncurses5-dev / libicu74 libncurses6 /' "$dockerfile" > "$dockerfile.patched"
+mv "$dockerfile.patched" "$dockerfile"
+grep -q ' libicu74 libncurses6 ' "$dockerfile" \
+  || die "the runtime packages of apps/docker/Dockerfile changed, update the libncurses5-dev patch"
+
 module_revisions=""
 for m in $base_mods $extra_mods; do
   url="${m%@*}"
