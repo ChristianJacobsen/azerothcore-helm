@@ -1,5 +1,5 @@
 # renovate: datasource=docker depName=library/python
-ARG PYTHON_IMAGE=python:3.14.7-alpine
+ARG PYTHON_IMAGE=python:3.15.0-alpine
 FROM ${PYTHON_IMAGE}
 LABEL org.opencontainers.image.description="Python for the scripts of the azerothcore chart, without pip"
 # The scripts of the chart use only the standard library, and the packages
