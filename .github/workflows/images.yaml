@@ -13,6 +13,12 @@ permissions:
   contents: read
   packages: write
 
+# Two runs push the same tags, and the pin job of the older run cannot move
+# the pin branch past the pins of the newer run.
+concurrency:
+  group: images-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   FLAVORS: vanilla playerbots
   # Images of build/<name>.Dockerfile, for the chart besides the core images.
