@@ -19,46 +19,46 @@ images:
     worldserver:
       registry: ghcr.io
       repository: christianjacobsen/azerothcore-vanilla-worldserver
-      tag: "20261029-993b459"
-      digest: "sha256:26281c69c491ee94a9fd1a2790a5a28adafc11a31417ae6274a22e07122ca936"
+      tag: "20261030-993b459"
+      digest: "sha256:e95a3f0083606d9b207daff9beae355944eaf18a958096d8e3875e38dccc5b20"
     authserver:
       registry: ghcr.io
       repository: christianjacobsen/azerothcore-vanilla-authserver
-      tag: "20261029-993b459"
-      digest: "sha256:249502d7f26514d9f9f3c812bc484834df901d1f3daf94bedb898fb858b8d2f5"
+      tag: "20261030-993b459"
+      digest: "sha256:e37f15d0782fca35739c5368fd19ae428ca79417f316d79f8baf97e274f62623"
     # -- Must come from the same build as the servers, because the SQL
     # updates follow the core revision.
     dbImport:
       registry: ghcr.io
       repository: christianjacobsen/azerothcore-vanilla-db-import
-      tag: "20261029-993b459"
-      digest: "sha256:886ccbafbc04eed426680cd515d11e4c774e84cd54ac15a42a4ac192b7313d1a"
+      tag: "20261030-993b459"
+      digest: "sha256:d6e5254be2f710ef11e97f40cc993e5e6b272af95c091036ac5243984155e8e9"
     clientData:
       registry: ghcr.io
       repository: christianjacobsen/azerothcore-vanilla-client-data
-      tag: "20261029-993b459"
-      digest: "sha256:7a33f3e1bc2a4ba58e42a54826a34d131272c67c426292120568970ebd3bd62e"
+      tag: "20261030-993b459"
+      digest: "sha256:62f77899823fd9e51444358a529726974f8845b89370d87540e6a1e2403c7e45"
   playerbots:
     worldserver:
       registry: ghcr.io
       repository: christianjacobsen/azerothcore-playerbots-worldserver
-      tag: "20261029-3f2969d"
-      digest: "sha256:d08f7de6dfc7466f6a2fae9ed095a554e1b66e904ecae8e18cf699dcfef3506e"
+      tag: "20261030-3f2969d"
+      digest: "sha256:1f70c8ad4e79e7d732cc4a9331e1dab3c6ad7391a26b5fff62366e7266258617"
     authserver:
       registry: ghcr.io
       repository: christianjacobsen/azerothcore-playerbots-authserver
-      tag: "20261029-3f2969d"
-      digest: "sha256:5c47f69bab199da08d7f4a3461daa55504458b20926ffd26bb4b4a7e7bfa6b67"
+      tag: "20261030-3f2969d"
+      digest: "sha256:03fa7457f654130d3fe77cd9cae1c3c435e6decbc57e2bb6114a7084ffa2dcf6"
     dbImport:
       registry: ghcr.io
       repository: christianjacobsen/azerothcore-playerbots-db-import
-      tag: "20261029-3f2969d"
-      digest: "sha256:35bfb8ff0c53ee921d17c15b0f0b45ad6723b8cf8a688244bad1f368dbeaccda"
+      tag: "20261030-3f2969d"
+      digest: "sha256:614d6736a350e72116e18b646303646e750b1204a856b8c3ab43752b32ed9117"
     clientData:
       registry: ghcr.io
       repository: christianjacobsen/azerothcore-playerbots-client-data
-      tag: "20261029-3f2969d"
-      digest: "sha256:8eadae2897dc601e5468eb83206b2cea5f0c4f63e472bc5d8a4f7e1258ad3228"
+      tag: "20261030-3f2969d"
+      digest: "sha256:b3bc0091ec658b483097c114be07b810573c8521cdcddb33439fdb0cab064d4b"
   # -- kubectl, for the init containers that wait for the Jobs.
   # renovate: datasource=docker depName=registry.k8s.io/kubectl
   kubectl:
@@ -71,8 +71,8 @@ images:
   python:
     registry: ghcr.io
     repository: christianjacobsen/azerothcore-python
-    tag: "3.15.0-alpine-20261029"
-    digest: "sha256:752c1cdae7381b7b47bba057fc54a0550821f02eb0e32df7d4269c01e2007dbd"
+    tag: "3.15.1-alpine-20261030"
+    digest: "sha256:ebca8a9656e36223e9bed984aceeb020317cd4b8e661b64fc379fcdc5888304f"
 
 # -- The images of the core run as uid 1000, the acore user of its Dockerfile.
 podSecurityContext:
@@ -116,8 +116,8 @@ mysql:
   image:
     registry: ghcr.io
     repository: christianjacobsen/azerothcore-mysql
-    tag: "9.7.2-20261029"
-    digest: "sha256:198a0c4f756243e835728c7b3ba72cd9ecfec197e5088988087b379b3693fed5"
+    tag: "9.7.2-20261030"
+    digest: "sha256:718aff3f64320298fc9d34e45c9a2ed4af4d16ccd0e4f66c17be5848e7a25f59"
   # -- Root password. Empty = generated and kept across upgrades. MySQL reads
   # it only when it initializes an empty data directory.
   rootPassword: ""
