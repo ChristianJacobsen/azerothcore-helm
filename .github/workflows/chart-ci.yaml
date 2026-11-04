@@ -99,13 +99,14 @@ jobs:
           refs=(--set gateway.enabled=true
             --set 'gateway.parentRefs.authserver[0].name=games' --set 'gateway.parentRefs.authserver[0].sectionName=auth'
             --set 'gateway.parentRefs.worldserver[0].name=games' --set 'gateway.parentRefs.worldserver[0].sectionName=world')
-          helm template t "$CHART" $IMAGE_ARGS "${refs[@]}" \
+          # No pipe into grep -q, see chart-e2e.yaml. -x: v1 is a prefix of v1alpha2.
+          rendered="$(helm template t "$CHART" $IMAGE_ARGS "${refs[@]}" \
             --api-versions gateway.networking.k8s.io/v1/Gateway \
-            --api-versions gateway.networking.k8s.io/v1alpha2/TCPRoute \
-            | grep -q "apiVersion: gateway.networking.k8s.io/v1alpha2"
-          helm template t "$CHART" $IMAGE_ARGS "${refs[@]}" \
-            --api-versions gateway.networking.k8s.io/v1/TCPRoute \
-            | grep -q "apiVersion: gateway.networking.k8s.io/v1"
+            --api-versions gateway.networking.k8s.io/v1alpha2/TCPRoute)"
+          grep -qx "apiVersion: gateway.networking.k8s.io/v1alpha2" <<< "$rendered"
+          rendered="$(helm template t "$CHART" $IMAGE_ARGS "${refs[@]}" \
+            --api-versions gateway.networking.k8s.io/v1/TCPRoute)"
+          grep -qx "apiVersion: gateway.networking.k8s.io/v1" <<< "$rendered"
 
       - name: invalid values must fail
         run: |

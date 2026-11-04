@@ -87,8 +87,11 @@ jobs:
           pw="$(kubectl -n azerothcore get secret ac-azerothcore-db -o jsonpath='{.data.root-password}' | base64 -d)"
           # The unix socket fails on kind (docker-library/mysql#936).
           q() { kubectl -n azerothcore exec ac-azerothcore-mysql-0 -- env MYSQL_PWD="$pw" mysql -h 127.0.0.1 -uroot -N -e "$1"; }
-          q "SELECT a.username, aa.gmlevel, aa.RealmID FROM acore_auth.account a JOIN acore_auth.account_access aa ON aa.id = a.id" \
-            | tee /dev/stderr | grep -q "^E2E	3	-1$"
+          # grep -q exits at the first match, and pipefail then fails the step on
+          # the SIGPIPE of a command that still writes. So no pipe into grep -q.
+          accounts="$(q "SELECT a.username, aa.gmlevel, aa.RealmID FROM acore_auth.account a JOIN acore_auth.account_access aa ON aa.id = a.id")"
+          echo "$accounts" >&2
+          grep -q "^E2E	3	-1$" <<< "$accounts"
           test "$(q "SELECT COUNT(*) FROM acore_world.creature_template")" -gt 1000
           if [ "$FLAVOR" = playerbots ]; then
             test "$(q "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'acore_playerbots'")" -gt 0
@@ -121,9 +124,11 @@ jobs:
           set -euo pipefail
           helm upgrade ac charts/azerothcore -n azerothcore --reuse-values --set dbInit.realm.name=e2e-upgrade
           kubectl -n azerothcore wait --for=condition=complete job/ac-azerothcore-db-init-r2 --timeout=1200s
-          kubectl -n azerothcore logs job/ac-azerothcore-db-init-r2 -c db-init | grep -q "name = 'e2e-upgrade'"
+          logs="$(kubectl -n azerothcore logs job/ac-azerothcore-db-init-r2 -c db-init)"
+          grep -q "name = 'e2e-upgrade'" <<< "$logs"
           kubectl -n azerothcore wait --for=condition=complete job/ac-azerothcore-client-data-r2 --timeout=600s
-          kubectl -n azerothcore logs job/ac-azerothcore-client-data-r2 | grep -q 'already installed'
+          logs="$(kubectl -n azerothcore logs job/ac-azerothcore-client-data-r2)"
+          grep -q 'already installed' <<< "$logs"
 
       - name: diagnose on failure
         if: failure()
