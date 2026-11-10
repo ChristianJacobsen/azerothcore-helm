@@ -1,5 +1,5 @@
 # renovate: datasource=docker depName=library/mysql
-ARG MYSQL_IMAGE=mysql:9.7.2
+ARG MYSQL_IMAGE=mysql:9.7.4
 FROM ${MYSQL_IMAGE}
 LABEL org.opencontainers.image.description="MySQL for the azerothcore chart, without gosu and MySQL Shell"
 # The chart starts MySQL as the mysql user, so the entrypoint never calls gosu.
