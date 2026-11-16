@@ -6,6 +6,9 @@
     "group:allNonMajor"
   ],
   "minimumReleaseAge": "7 days",
+  "schedule": [
+    "before 4am on monday"
+  ],
   "customManagers": [
     {
       "customType": "regex",
@@ -65,15 +68,13 @@
       "enabled": false
     },
     {
-      "description": "git-refs has no release timestamps. Without this, the minimum release age holds these updates forever.",
+      "description": "git-refs has no release timestamps. Without this, the minimum release age holds these updates forever. The group name and slug are those of group:allNonMajor, so the sources share one pull request with the other updates, and one merge starts one images run.",
       "matchDatasources": [
         "git-refs"
       ],
       "minimumReleaseAgeBehaviour": "timestamp-optional",
-      "groupName": "azerothcore sources",
-      "schedule": [
-        "before 4am on monday"
-      ]
+      "groupName": "all non-major dependencies",
+      "groupSlug": "all-minor-patch"
     }
   ]
 }
