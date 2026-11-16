@@ -135,10 +135,7 @@ jobs:
         run: |
           kubectl -n azerothcore get pods -o wide || true
           kubectl -n azerothcore get jobs || true
-          for j in $(kubectl -n azerothcore get jobs -o name); do
-            kubectl -n azerothcore logs "$j" --all-containers --tail=100 || true
-          done
-          kubectl -n azerothcore logs deploy/ac-azerothcore-worldserver -c worldserver --tail=100 || true
           for p in $(kubectl -n azerothcore get pods -o name); do
+            kubectl -n azerothcore logs "$p" --all-containers --prefix --tail=100 || true
             kubectl -n azerothcore describe "$p" | tail -30 || true
           done
