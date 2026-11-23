@@ -109,7 +109,8 @@ jobs:
       - name: follow the realm list to the worldserver
         run: |
           set -euo pipefail
-          python_image="$(yq '.images.python | .registry + "/" + .repository + ":" + .tag' charts/azerothcore/values.yaml)"
+          # Reuses the image that the helm test pulled.
+          python_image="$(yq '.images.python | .registry + "/" + .repository + ":" + .tag + "@" + .digest' charts/azerothcore/values.yaml)"
           kubectl -n azerothcore run world-check --restart=Never \
             --image="$python_image" \
             --overrides='{"apiVersion":"v1","spec":{"containers":[{"name":"world-check","image":"'"$python_image"'",
